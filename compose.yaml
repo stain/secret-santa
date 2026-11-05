@@ -1,0 +1,51 @@
+# Production: Caddy (HTTPS, certificates from Let's Encrypt) in front of the app.
+# Settings come from .env (see .env.example). Start or update with:
+#   docker compose up -d --build
+
+x-logging: &logging
+  # Container stdout/stderr, rotated by size: no logrotate needed.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      PORT: "8787"
+    volumes:
+      - data:/data # database and nightly SQL dumps
+    # Not published: only Caddy reaches it, over the compose network.
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 100
+    logging: *logging
+
+  caddy:
+    image: docker.io/library/caddy:2.11
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates
+      - caddy_config:/config
+    mem_limit: 128m
+    logging: *logging
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

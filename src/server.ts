@@ -1,5 +1,7 @@
 // The Node.js server: database and migrations, static files, routing to
-// index.ts, and the daily jobs (deleting expired groups, nightly backups).
+// index.ts, and the daily jobs (deleting expired groups, nightly SQL dumps).
+// Logs go to stdout/stderr only; no request logging, so private links and
+// IP addresses never end up in logs.
 //
 // Settings (environment variables; locally read from .dev.vars):
 //   ADMIN_PASSWORD     required
@@ -10,10 +12,11 @@
 //   HOSTING_PROVIDER, HOSTING_LOCATION   named in the privacy notice
 //   BACKUP_DAYS        default 7; 0 turns nightly backups off
 
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join } from "node:path";
 import { Readable } from "node:stream";
+import { backUp } from "./backup";
 import { purgeExpired } from "./db";
 import type { Env } from "./env";
 import { handle } from "./index";
@@ -79,30 +82,10 @@ async function deleteExpired(): Promise<void> {
   if (deleted) console.log(`Deleted ${deleted} expired group(s)`);
 }
 
-/** One copy of the database per day, kept for BACKUP_DAYS days. */
-function backUp(): void {
-  if (BACKUP_DAYS <= 0) return;
-  const dir = join(DATA_DIR, "backups");
-  mkdirSync(dir, { recursive: true });
-  const today = new Date().toISOString().slice(0, 10);
-  const file = join(dir, `santa-${today}.db`);
-  try {
-    statSync(file);
-  } catch {
-    db.raw.prepare("VACUUM INTO ?").run(file);
-    console.log(`Backed up the database to ${file}`);
-  }
-  const oldest = new Date(Date.now() - BACKUP_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  for (const name of readdirSync(dir)) {
-    const day = name.match(/^santa-(\d{4}-\d{2}-\d{2})\.db$/)?.[1];
-    if (day && day < oldest) rmSync(join(dir, name));
-  }
-}
-
 async function dailyJobs(): Promise<void> {
   try {
     await deleteExpired();
-    backUp();
+    backUp(db, DATA_DIR, BACKUP_DAYS);
   } catch (e) {
     console.error("Daily jobs failed:", e);
   }

@@ -127,12 +127,17 @@ function absoluteHttps(src: string, base: string): string {
   }
 }
 
-/** Reads "1,234.50", "1.234,50", "1 234" or a number; null if not a price. */
+/**
+ * Reads the first amount in "£1,234.50", "1.234,50 €", "1 234 kr" or
+ * "£45.00 with 10 percent savings"; null if there is none.
+ */
 function parseAmount(raw: unknown): number | null {
   if (typeof raw === "number") return Number.isFinite(raw) && raw >= 0 ? raw : null;
   if (typeof raw !== "string") return null;
-  const digits = decodeEntities(raw).replace(/[^\d.,]/g, "");
-  if (!/\d/.test(digits)) return null;
+  // Digits joined by . or , or by a space before a group of exactly three.
+  const token = decodeEntities(raw).match(/\d+(?:(?:[.,]|[\s\u00a0](?=\d{3}(?!\d)))\d+)*/)?.[0];
+  if (!token) return null;
+  const digits = token.replace(/[\s\u00a0]/g, "");
   const lastSep = Math.max(digits.lastIndexOf("."), digits.lastIndexOf(","));
   // A last separator followed by exactly three digits groups thousands.
   const decimals = lastSep >= 0 && digits.length - lastSep - 1 !== 3;
@@ -180,116 +185,156 @@ function validPrice(price: number | null, currency: string | undefined): Pick<Pr
 export async function fetchPreview(url: string): Promise<Preview> {
   try {
     const page = await fetchPage(url);
-    if (!page?.res.body) return EMPTY;
-    const { res, base } = page;
-
-    const jsonLd: string[] = [];
-    const meta = new Map<string, string>();
-    let titles = 0;
-    let pageTitle = "";
-    let amazonTitle = "";
-    let amazonImage = "";
-    let amazonPrice = "";
-    let amazonPrices = 0;
-    let linkImage = "";
-    let itemPrice = "";
-    let itemCurrency = "";
-
-    const rewriter = new HTMLRewriter()
-      .on('script[type="application/ld+json"]', {
-        element: () => void jsonLd.push(""),
-        text: (t) => void (jsonLd[jsonLd.length - 1] += t.text),
-      })
-      .on("meta", {
-        element(el) {
-          const key = (el.getAttribute("property") ?? el.getAttribute("name") ?? el.getAttribute("itemprop"))?.toLowerCase();
-          const content = el.getAttribute("content");
-          if (key && content && !meta.has(key)) meta.set(key, content);
-        },
-      })
-      .on("#productTitle", { text: (t) => void (amazonTitle += t.text) })
-      .on("img#landingImage", {
-        element(el) {
-          amazonImage ||= el.getAttribute("data-old-hires") || el.getAttribute("src") || "";
-        },
-      })
-      // The first displayed price; .a-offscreen holds it as plain text.
-      .on(".a-price .a-offscreen", {
-        element: () => void amazonPrices++,
-        text: (t) => void (amazonPrices === 1 && (amazonPrice += t.text)),
-      })
-      .on('[itemprop="price"]', {
-        element(el) {
-          itemPrice ||= el.getAttribute("content") ?? "";
-        },
-      })
-      .on('[itemprop="priceCurrency"]', {
-        element(el) {
-          itemCurrency ||= el.getAttribute("content") ?? "";
-        },
-      })
-      .on('link[rel="image_src"]', {
-        element(el) {
-          linkImage ||= el.getAttribute("href") ?? "";
-        },
-      })
-      .on("title", {
-        element: () => void titles++,
-        text: (t) => void (titles === 1 && (pageTitle += t.text)),
-      });
-
-    // Read through the rewritten page, giving up on very large ones.
-    const reader = rewriter.transform(res).body!.getReader();
-    let total = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_BYTES) {
-        await reader.cancel();
-        break;
-      }
-    }
-
-    let product: Record<string, unknown> | undefined;
-    for (const block of jsonLd) {
-      try {
-        product = findProduct(JSON.parse(block));
-      } catch {
-        // Broken JSON-LD is common; fall through to the meta tags.
-      }
-      if (product) break;
-    }
-
-    const title =
-      clean(product?.name) ||
-      clean(meta.get("og:title")) ||
-      clean(meta.get("twitter:title")) ||
-      clean(meta.get("name")) ||
-      clean(amazonTitle) ||
-      clean(pageTitle);
-    const image =
-      absoluteHttps(imageUrl(product?.image), base) ||
-      absoluteHttps(meta.get("og:image:secure_url") ?? "", base) ||
-      absoluteHttps(meta.get("og:image") ?? "", base) ||
-      absoluteHttps(meta.get("twitter:image") ?? "", base) ||
-      absoluteHttps(meta.get("image") ?? "", base) ||
-      absoluteHttps(amazonImage, base) ||
-      absoluteHttps(linkImage, base);
-    const host = new URL(base).hostname;
-    const offer = offerPrice(product?.offers);
-    const priced = [
-      validPrice(offer?.price ?? null, offer?.currency),
-      validPrice(parseAmount(meta.get("product:price:amount")), meta.get("product:price:currency")),
-      validPrice(parseAmount(meta.get("og:price:amount")), meta.get("og:price:currency")),
-      validPrice(parseAmount(itemPrice), itemCurrency),
-      validPrice(parseAmount(amazonPrice), currencyOfText(amazonPrice, host)),
-    ].find((p) => p.price !== null);
-    return { title, image, ...(priced ?? { price: null, currency: "" }) };
+    return page?.res.body ? await extractPreview(page.res, page.base) : EMPTY;
   } catch {
     // Timeouts, network errors and shops that block robots: no preview.
     return EMPTY;
   }
+}
+
+/** Reads the preview out of a fetched HTML page; base resolves relative URLs. */
+export async function extractPreview(res: Response, base: string): Promise<Preview> {
+  const jsonLd: string[] = [];
+  const meta = new Map<string, string>();
+  let titles = 0;
+  let pageTitle = "";
+  let amazonTitle = "";
+  let amazonImage = "";
+  let amazonPrice = "";
+  let amazonPrices = 0;
+  let amazonWhole = "";
+  let amazonFraction = "";
+  let amazonSymbol = "";
+  let amazonWholes = 0;
+  let amazonSymbols = 0;
+  let variantPrice = "";
+  let variantUnit = "";
+  let robotCheck = false;
+  let linkImage = "";
+  let itemPrice = "";
+  let itemCurrency = "";
+
+  const rewriter = new HTMLRewriter()
+    .on('script[type="application/ld+json"]', {
+      element: () => void jsonLd.push(""),
+      text: (t) => void (jsonLd[jsonLd.length - 1] += t.text),
+    })
+    .on("meta", {
+      element(el) {
+        const key = (el.getAttribute("property") ?? el.getAttribute("name") ?? el.getAttribute("itemprop"))?.toLowerCase();
+        const content = el.getAttribute("content");
+        if (key && content && !meta.has(key)) meta.set(key, content);
+      },
+    })
+    .on("#productTitle", { text: (t) => void (amazonTitle += t.text) })
+    .on("img#landingImage", {
+      element(el) {
+        amazonImage ||= el.getAttribute("data-old-hires") || el.getAttribute("src") || "";
+      },
+    })
+    // Amazon's robot check, served instead of the product page.
+    .on('form[action*="validateCaptcha"]', { element: () => void (robotCheck = true) })
+    // Pages with sizes or colours carry the selected variant's price here.
+    .on("input#twister-plus-price-data-price", {
+      element(el) {
+        variantPrice ||= el.getAttribute("value") ?? "";
+      },
+    })
+    .on("input#twister-plus-price-data-price-unit", {
+      element(el) {
+        variantUnit ||= el.getAttribute("value") ?? "";
+      },
+    })
+    // The first displayed price as plain text (older and newer class names).
+    .on(".a-price .a-offscreen, .a-price .aok-offscreen, #corePriceDisplay_desktop_feature_div .aok-offscreen", {
+      element: () => void amazonPrices++,
+      text: (t) => void (amazonPrices === 1 && (amazonPrice += t.text)),
+    })
+    // ...and the same price as shown, split into symbol, whole and fraction.
+    .on(".a-price .a-price-whole", {
+      element: () => void amazonWholes++,
+      text: (t) => void (amazonWholes === 1 && (amazonWhole += t.text)),
+    })
+    .on(".a-price .a-price-fraction", { text: (t) => void (amazonWholes === 1 && (amazonFraction += t.text)) })
+    .on(".a-price .a-price-symbol", {
+      element: () => void amazonSymbols++,
+      text: (t) => void (amazonSymbols === 1 && (amazonSymbol += t.text)),
+    })
+    .on('[itemprop="price"]', {
+      element(el) {
+        itemPrice ||= el.getAttribute("content") ?? "";
+      },
+    })
+    .on('[itemprop="priceCurrency"]', {
+      element(el) {
+        itemCurrency ||= el.getAttribute("content") ?? "";
+      },
+    })
+    .on('link[rel="image_src"]', {
+      element(el) {
+        linkImage ||= el.getAttribute("href") ?? "";
+      },
+    })
+    .on("title", {
+      element: () => void titles++,
+      text: (t) => void (titles === 1 && (pageTitle += t.text)),
+    });
+
+  // Read through the rewritten page, giving up on very large ones.
+  const reader = rewriter.transform(res).body!.getReader();
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BYTES) {
+      await reader.cancel();
+      break;
+    }
+  }
+
+  if (robotCheck) return EMPTY;
+
+  let product: Record<string, unknown> | undefined;
+  for (const block of jsonLd) {
+    try {
+      product = findProduct(JSON.parse(block));
+    } catch {
+      // Broken JSON-LD is common; fall through to the meta tags.
+    }
+    if (product) break;
+  }
+
+  const title =
+    clean(product?.name) ||
+    clean(meta.get("og:title")) ||
+    clean(meta.get("twitter:title")) ||
+    clean(meta.get("name")) ||
+    clean(amazonTitle) ||
+    clean(pageTitle);
+  const image =
+    absoluteHttps(imageUrl(product?.image), base) ||
+    absoluteHttps(meta.get("og:image:secure_url") ?? "", base) ||
+    absoluteHttps(meta.get("og:image") ?? "", base) ||
+    absoluteHttps(meta.get("twitter:image") ?? "", base) ||
+    absoluteHttps(meta.get("image") ?? "", base) ||
+    absoluteHttps(amazonImage, base) ||
+    absoluteHttps(linkImage, base);
+  const host = new URL(base).hostname;
+  const offer = offerPrice(product?.offers);
+  const priced = [
+    validPrice(offer?.price ?? null, offer?.currency),
+    validPrice(parseAmount(meta.get("product:price:amount")), meta.get("product:price:currency")),
+    validPrice(parseAmount(meta.get("og:price:amount")), meta.get("og:price:currency")),
+    validPrice(parseAmount(itemPrice), itemCurrency),
+    validPrice(parseAmount(variantPrice), currencyOfText(variantUnit, host)),
+    validPrice(parseAmount(amazonPrice), currencyOfText(amazonPrice, host)),
+    validPrice(
+      parseAmount(`${amazonWhole.replace(/[^\d]/g, "")}.${amazonFraction.replace(/[^\d]/g, "") || "00"}`),
+      currencyOfText(amazonSymbol, host),
+    ),
+  ].find((p) => p.price !== null);
+  return { title, image, ...(priced ?? { price: null, currency: "" }) };
 }
 
 /** fetchPreview, remembering successful lookups in D1 for a day. */

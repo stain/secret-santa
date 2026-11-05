@@ -31,9 +31,12 @@ export function participantPath(p: Pick<Participant, "id" | "access_key">): stri
   return `/p/${p.id}?key=${encodeURIComponent(p.access_key)}`;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 /** Looks up the participant only if the URL's key matches theirs. */
 async function authorise(env: Env, id: string, url: URL): Promise<Participant | null> {
   const key = url.searchParams.get("key") ?? "";
+  if (!UUID.test(id)) return null;
   const p = await getParticipant(env.DB, id);
   // Same answer for an unknown id and a wrong key, so neither can be probed.
   if (!p || !key || !(await safeEqual(key, p.access_key))) return null;
@@ -153,6 +156,8 @@ export async function handleParticipant(
   sub?: string,
 ): Promise<Response> {
   const { t, url } = ctx;
+  // Everything below, including the product lookup and the data download,
+  // needs the participant's key: keep every sub-route after this check.
   const me = await authorise(env, id, url);
   if (!me) return errorPage(ctx, 404, t.badLink);
   if (sub === "preview") return previewJson(ctx, env, me);

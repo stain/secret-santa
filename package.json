@@ -9,7 +9,8 @@
     "db:migrate:local": "wrangler d1 migrations apply secret-santa --local",
     "db:migrate:remote": "wrangler d1 migrations apply secret-santa --remote",
     "cf-typegen": "wrangler types",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

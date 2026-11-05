@@ -41,7 +41,7 @@ npm run db:migrate:local
 npm run dev                           # http://localhost:8787
 ```
 
-Go to <http://localhost:8787/admin> and log in with any user name and the `ADMIN_PASSWORD` from `.dev.vars`. To check the code, run `npm run typecheck`. Run `npm run cf-typegen` again after you change `wrangler.jsonc` or `.dev.vars`.
+Go to <http://localhost:8787/admin> and log in with any user name and the `ADMIN_PASSWORD` from `.dev.vars`. To check the code, run `npm run typecheck`. With the dev server running, `npm test` checks access control: participant pages, the product lookup and the data download must refuse every request without the right key, and admin pages must need the password. It creates a temporary group and deletes it afterwards. Run `npm run cf-typegen` again after you change `wrangler.jsonc` or `.dev.vars`.
 
 ## Deploying to Cloudflare (free plan)
 

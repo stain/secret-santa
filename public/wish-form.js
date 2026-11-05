@@ -55,6 +55,10 @@
       const res = await fetch(`${endpoint}&url=${encodeURIComponent(link)}`);
       const data = res.ok ? await res.json() : {};
       if (lastLookedUp.get(n) !== link) return; // a newer link was entered meanwhile
+      if (res.status === 429) {
+        message(box, form.dataset.limited);
+        return;
+      }
       if (data.title || data.image) {
         show(box, data);
         // The name is used when the description is left empty.

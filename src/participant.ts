@@ -18,7 +18,7 @@ import type { Ctx } from "./i18n";
 import { errorPage, page } from "./layout";
 import { budgetText, convert, getRates, isCurrency, priceText, type Rates } from "./money";
 import { cachedPreview } from "./preview";
-import { safeEqual } from "./security";
+import { isSameOrigin, safeEqual } from "./security";
 
 const MAX_TEXT_LENGTH = 300;
 const MAX_URL_LENGTH = 2000;
@@ -96,9 +96,10 @@ function budgetLine(pc: PriceContext): Html | false {
 }
 
 /** JSON for the wish form's live preview (public/wish-form.js). */
-async function previewJson(ctx: Ctx, env: Env): Promise<Response> {
+async function previewJson(ctx: Ctx, env: Env, me: Participant): Promise<Response> {
   const link = normaliseUrl(ctx.url.searchParams.get("url") ?? "");
-  const preview = link ? await cachedPreview(env.DB, link) : null;
+  const preview = link ? await cachedPreview(env.DB, link, me.id) : null;
+  const limited = Boolean(link) && preview === null;
   const rates = preview?.price != null ? await getRates(env.DB) : null;
   const body = {
     title: preview?.title ?? "",
@@ -106,7 +107,7 @@ async function previewJson(ctx: Ctx, env: Env): Promise<Response> {
     price: preview?.price != null && rates ? priceText(ctx, rates, preview.price, preview.currency) : "",
   };
   return new Response(JSON.stringify(body), {
-    status: link === null ? 400 : 200,
+    status: link === null ? 400 : limited ? 429 : 200,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
   });
 }
@@ -121,9 +122,12 @@ export async function handleParticipant(
   const { t, url } = ctx;
   const me = await authorise(env, id, url);
   if (!me) return errorPage(ctx, 404, t.badLink);
-  if (sub === "preview") return previewJson(ctx, env);
+  if (sub === "preview") return previewJson(ctx, env, me);
 
   if (request.method === "POST") {
+    // The key in the form address already stops other sites posting here;
+    // this is a second line of defence.
+    if (!isSameOrigin(request)) return errorPage(ctx, 403, t.crossSite);
     const form = await request.formData().catch(() => new FormData());
     const entered: { text: string; url: string }[] = [];
     for (let i = 1; i <= MAX_WISHES; i++) {
@@ -139,7 +143,7 @@ export async function handleParticipant(
     const wishes = await Promise.all(
       entered.map(async (w) => {
         if (!w.url) return { ...w, title: "", image: "", price: null, currency: "" };
-        const found = await cachedPreview(env.DB, w.url);
+        const found = (await cachedPreview(env.DB, w.url, me.id)) ?? { title: "", image: "", price: null, currency: "" };
         const known = previous.find((p) => p.url === w.url);
         const { title, image, price, currency } = found.title || found.image || !known ? found : known;
         return { ...w, title, image, price, currency };
@@ -202,7 +206,7 @@ ${assignment}
   ${budgetLine(pc)}
   <form method="post" action="${participantPath(me)}" class="wish-form"
     data-preview="${`/p/${me.id}/preview?key=${encodeURIComponent(me.access_key)}`}"
-    data-looking="${t.lookingUp}" data-none="${t.nothingFound}">
+    data-looking="${t.lookingUp}" data-none="${t.nothingFound}" data-limited="${t.tooManyLookups}">
     ${ideaFields}
     <button type="submit">${t.saveWishes}</button>
   </form>

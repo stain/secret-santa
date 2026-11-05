@@ -12,6 +12,8 @@ export interface Preview {
 
 const EMPTY: Preview = { title: "", image: "", price: null, currency: "" };
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** Outbound lookups each participant may trigger per hour (cache hits are free). */
+export const MAX_LOOKUPS_PER_HOUR = 30;
 const MAX_BYTES = 1_500_000;
 const MAX_REDIRECTS = 5;
 const TIMEOUT_MS = 6000;
@@ -337,8 +339,12 @@ export async function extractPreview(res: Response, base: string): Promise<Previ
   return { title, image, ...(priced ?? { price: null, currency: "" }) };
 }
 
-/** fetchPreview, remembering successful lookups in D1 for a day. */
-export async function cachedPreview(db: D1Database, url: string): Promise<Preview> {
+/**
+ * fetchPreview, remembering successful lookups in D1 for a day. Returns null
+ * when the participant has used up their lookups for the hour. Each lookup
+ * also deletes cache and rate-limit rows older than a day, so neither grows.
+ */
+export async function cachedPreview(db: D1Database, url: string, participantId: string): Promise<Preview | null> {
   const hit = await db
     .prepare("SELECT title, image, price, currency, fetched_at FROM previews WHERE url = ?")
     .bind(url)
@@ -347,6 +353,19 @@ export async function cachedPreview(db: D1Database, url: string): Promise<Previe
     const { fetched_at: _, ...preview } = hit;
     return preview;
   }
+  const now = Date.now();
+  const used = await db
+    .prepare("SELECT COUNT(*) AS n FROM lookups WHERE participant_id = ? AND at > ?")
+    .bind(participantId, new Date(now - 60 * 60 * 1000).toISOString())
+    .first<number>("n");
+  if ((used ?? 0) >= MAX_LOOKUPS_PER_HOUR) return null;
+  const dayAgo = new Date(now - CACHE_MAX_AGE_MS).toISOString();
+  await db.batch([
+    db.prepare("INSERT INTO lookups (participant_id, at) VALUES (?, ?)").bind(participantId, new Date(now).toISOString()),
+    db.prepare("DELETE FROM lookups WHERE at < ?").bind(dayAgo),
+    db.prepare("DELETE FROM previews WHERE fetched_at < ?").bind(dayAgo),
+  ]);
+
   const preview = await fetchPreview(url);
   if (preview.title || preview.image) {
     await db

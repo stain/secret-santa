@@ -53,3 +53,4 @@ npm run deploy
 - Anyone who has a participant's link can see that participant's page. Each key is 192 bits of randomness. Pages are sent with `Cache-Control: no-store` and a `same-origin` referrer policy, so the key isn't passed on to other sites.
 - One shared `ADMIN_PASSWORD` protects the admin pages, and admin form posts from other sites are refused. The admin page hides the drawn circle behind a "spoilers" toggle, in case the admin is taking part too.
 - Adding or removing people after the draw cancels the draw. Draw again and send the new links.
+- The server fetches product links itself. Each participant can trigger at most 30 fetches an hour (looking up a cached link doesn't count). Cached lookups and rate-limit records older than a day are deleted as new lookups are made.

@@ -45,15 +45,23 @@ export async function getRates(db: D1Database): Promise<Rates> {
     .prepare("SELECT currency, per_eur, fetched_at FROM rates")
     .all<{ currency: string; per_eur: number; fetched_at: string }>();
   const stored: Rates = new Map(results.map((r) => [r.currency, r.per_eur]));
-  const fresh =
-    results.length > 0 && results.every((r) => Date.now() - Date.parse(r.fetched_at) < RATES_MAX_AGE_MS);
-  if (fresh) return stored;
+  // One fetch updates every row, so the newest row says when we last fetched.
+  // (Checking every row would refetch on each request if the API ever
+  // stopped listing a currency we have stored.)
+  const lastFetched = Math.max(0, ...results.map((r) => Date.parse(r.fetched_at) || 0));
+  if (Date.now() - lastFetched < RATES_MAX_AGE_MS && CURRENCIES.every((c) => stored.has(c))) return stored;
 
   try {
     const res = await fetch(RATES_API, { signal: AbortSignal.timeout(4000) });
     if (!res.ok) throw new Error(`rates: HTTP ${res.status}`);
-    const data = (await res.json()) as { rates: Record<string, number> };
-    const rates: Rates = new Map(Object.entries({ ...data.rates, EUR: 1 }));
+    const data = (await res.json()) as { rates?: Record<string, unknown> };
+    const rates: Rates = new Map([["EUR", 1]]);
+    for (const [code, perEur] of Object.entries(data.rates ?? {})) {
+      if (/^[A-Z]{3}$/.test(code) && typeof perEur === "number" && Number.isFinite(perEur) && perEur > 0) {
+        rates.set(code, perEur);
+      }
+    }
+    if (!CURRENCIES.every((c) => rates.has(c))) throw new Error("rates: a currency is missing");
     const now = new Date().toISOString();
     await db.batch(
       [...rates].map(([currency, perEur]) =>

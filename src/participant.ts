@@ -17,7 +17,7 @@ import {
 } from "./db";
 import { Html, html, redirect } from "./html";
 import { formatDate, type Ctx } from "./i18n";
-import { imageSrc } from "./images";
+import { imageSources } from "./images";
 import { errorPage, page } from "./layout";
 import { budgetText, convert, getRates, isCurrency, priceText, type Rates } from "./money";
 import { cachedPreview } from "./preview";
@@ -61,11 +61,12 @@ function hostOf(url: string): string {
   return new URL(url).hostname.replace(/^www\./, "");
 }
 
-/** Everything a wish list needs to show prices against the group's budget. */
+/** Everything a wish list needs: prices against the group's budget, and signed photo addresses. */
 interface PriceContext {
   ctx: Ctx;
   rates: Rates;
   chain: Chain;
+  img: (url: string) => string;
 }
 
 function isOverBudget({ rates, chain }: PriceContext, w: Wish): boolean {
@@ -76,11 +77,11 @@ function isOverBudget({ rates, chain }: PriceContext, w: Wish): boolean {
 
 /** A list of wish ideas; linked ones show as product cards with name, photo and price. */
 function renderWishes(pc: PriceContext, wishes: Wish[]): Html {
-  const { ctx, rates } = pc;
+  const { ctx, rates, img } = pc;
   return html`<ol class="ideas">${wishes.map((w) => {
     if (!w.url) return html`<li>${w.text}</li>`;
     return html`<li class="product">
-      ${w.image && html`<a href="${w.url}" ${LINK_OUT} tabindex="-1"><img src="${imageSrc(w.image)}" alt="" loading="lazy"></a>`}
+      ${w.image && html`<a href="${w.url}" ${LINK_OUT} tabindex="-1"><img src="${img(w.image)}" alt="" loading="lazy"></a>`}
       <div>
         <a class="product-title" href="${w.url}" ${LINK_OUT}>${w.title || w.text || hostOf(w.url)}</a>
         ${w.title && w.text && html`<div class="note">${w.text}</div>`}
@@ -116,7 +117,7 @@ async function previewJson(ctx: Ctx, env: Env, me: Participant): Promise<Respons
   const rates = preview?.price != null ? await getRates(env.DB) : null;
   const body = {
     title: preview?.title ?? "",
-    image: preview?.image ? imageSrc(preview.image) : "",
+    image: preview?.image ? (await imageSources(env.DB, [preview.image]))(preview.image) : "",
     price: preview?.price != null && rates ? priceText(ctx, rates, preview.price, preview.currency) : "",
   };
   return new Response(JSON.stringify(body), {
@@ -207,7 +208,8 @@ export async function handleParticipant(
   const settings = await getSettings(env.DB);
   const everyone = await listParticipants(env.DB, me.chain_id);
   const wishes = await listWishes(env.DB, me.chain_id);
-  const pc: PriceContext = { ctx, rates: await getRates(env.DB), chain };
+  const img = await imageSources(env.DB, [...wishes.values()].flat().map((w) => w.image));
+  const pc: PriceContext = { ctx, rates: await getRates(env.DB), chain, img };
   const giftee = everyone.find((p) => p.id === me.giftee_id);
   const gifteeWishes = giftee ? (wishes.get(giftee.id) ?? []) : [];
   const myWishes = wishes.get(me.id) ?? [];
@@ -236,7 +238,7 @@ export async function handleParticipant(
       <label for="url${n}">${t.ideaLink}</label>
       <input id="url${n}" name="url${n}" type="url" maxlength="${MAX_URL_LENGTH}" placeholder="https://" value="${w?.url ?? ""}" data-preview-for="${n}">
       <div class="preview" id="preview${n}" aria-live="polite">${w?.url && (w.title || w.image) && html`
-        ${w.image && html`<img src="${imageSrc(w.image)}" alt="">`}
+        ${w.image && html`<img src="${pc.img(w.image)}" alt="">`}
         <div><strong>${w.title}</strong>${w.price !== null && html`<div class="price">${priceText(ctx, pc.rates, w.price, w.currency)}</div>`}</div>`}</div>
       <label for="text${n}">${t.ideaText}</label>
       <input id="text${n}" name="text${n}" maxlength="${MAX_TEXT_LENGTH}" value="${w?.text ?? ""}" placeholder="${w?.title ?? ""}">

@@ -69,7 +69,7 @@ The **data controller**, named on the admin home page and shown at the top of th
 - **Storage limitation:** each group has an end date (default 31 January). A daily cron trigger (`scheduled` in `src/index.ts`) deletes groups the day after, with all their participants and wishes. Product lookups and rate-limit records are kept for one day.
 - **Rights:** participants can download their data as JSON and change or delete their wishes. The admin can correct names and email addresses without redoing the draw, and removing someone deletes all their data.
 - **Family-friendly links:** wish links (and every redirect they lead through, and product photos) are checked against Cloudflare's "1.1.1.1 for Families" resolver, which blocks domains classed as adult content or malware (`src/safety.ts`). Only the hostname is sent. It judges whole sites, so the admin can also review and clear a participant's wishes. If the resolver can't be reached, links are allowed.
-- **No third parties in the browser:** the font is served from the app, and product photos are passed through the Worker (`/img`), so visitors' browsers contact no other servers.
+- **No third parties in the browser:** the font is served from the app, and product photos are passed through the Worker (`/img`), so visitors' browsers contact no other servers. Photo addresses are signed with a key the app generates (kept in the `settings` table), so outsiders can't use `/img` to test what has been wished for.
 - **Location and logs:** create the database with `--jurisdiction eu`. Workers Logs are off, because they would record private links and IP addresses.
 
 **What the organiser still has to do:**

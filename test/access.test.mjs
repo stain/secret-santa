@@ -97,3 +97,26 @@ test("links to sites that aren't family-friendly are refused (needs network)", a
   });
   assert.equal(save.status, 400);
 });
+
+test("language and currency links only redirect within the site", async () => {
+  const location = async (back) =>
+    (await fetch(`${BASE}/lang/en?back=${encodeURIComponent(back)}`, { redirect: "manual" })).headers.get("Location");
+  for (const evil of ["//evil.example/x", "/\t/evil.example/x", "/\\evil.example/x", "https://evil.example/x", "/\n/evil.example"]) {
+    assert.ok((await location(evil)).startsWith("/") && !(await location(evil)).startsWith("//"), JSON.stringify(evil));
+    assert.ok(!new URL(await location(evil), BASE).host.includes("evil"), JSON.stringify(evil));
+  }
+  assert.equal(await location("/p/x?key=y"), "/p/x?key=y");
+});
+
+test("the photo proxy only serves addresses the app signed", async () => {
+  const [a] = people;
+  const html = await (await fetch(`${BASE}/p/${a.id}?key=${a.key}`)).text();
+  const src = html.match(/\/img\?u=[^"]+/)?.[0]?.replaceAll("&amp;", "&");
+  if (src) {
+    const unsigned = src.replace(/&s=[^&]+/, "");
+    const tampered = src.replace(/&s=(.)/, (_, c) => `&s=${c === "A" ? "B" : "A"}`);
+    assert.equal(await status(unsigned), 404);
+    assert.equal(await status(tampered), 404);
+  }
+  assert.equal(await status(`/img?u=${encodeURIComponent("https://example.org/guess.jpg")}&s=AAAAAAAAAAAAAAAAAAAAAA`), 404);
+});

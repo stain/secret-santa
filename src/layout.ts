@@ -29,6 +29,7 @@ export function page(ctx: Ctx, title: string, body: Html, status = 200): Respons
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${title} · ${t.siteTitle}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>

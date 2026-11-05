@@ -10,8 +10,14 @@ import { handleImage } from "./images";
 import { handleParticipant } from "./participant";
 import { privacyPage } from "./privacy";
 
-export default {
+const worker = {
   async fetch(request, env, execution): Promise<Response> {
+    // HEAD (used by some email link scanners) gets the GET response's headers.
+    // Static files in public/ handle HEAD themselves.
+    if (request.method === "HEAD") {
+      const res = await worker.fetch(new Request(request, { method: "GET" }), env, execution);
+      return new Response(null, { status: res.status, headers: res.headers });
+    }
     const ctx = resolveContext(request);
     const { t } = ctx;
     const path = ctx.url.pathname.split("/").filter(Boolean);
@@ -44,3 +50,5 @@ export default {
     console.log(`Deleted ${deleted} expired group(s)`);
   },
 } satisfies ExportedHandler<Env>;
+
+export default worker;

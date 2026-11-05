@@ -1,0 +1,3 @@
+# Private Secret Santa app: nothing here is meant to be indexed.
+User-agent: *
+Disallow: /

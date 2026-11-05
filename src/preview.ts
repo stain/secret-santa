@@ -3,6 +3,8 @@
 // and Twitter meta tags, microdata, Amazon's product markup (which has none
 // of those), then the page's <title> and <link rel="image_src">.
 
+import { isFamilyFriendly } from "./safety";
+
 export interface Preview {
   title: string;
   image: string;
@@ -47,6 +49,8 @@ export async function fetchPublic(
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
     const target = new URL(current);
     if (!/^https?:$/.test(target.protocol) || !isPublicHost(target.hostname)) return null;
+    // Also on every redirect, so a harmless-looking link can't lead to a blocked site.
+    if (!(await isFamilyFriendly(target.hostname))) return null;
     const res = await fetch(target, {
       redirect: "manual",
       signal: AbortSignal.timeout(TIMEOUT_MS),

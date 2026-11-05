@@ -21,6 +21,7 @@ import { imageSrc } from "./images";
 import { errorPage, page } from "./layout";
 import { budgetText, convert, getRates, isCurrency, priceText, type Rates } from "./money";
 import { cachedPreview } from "./preview";
+import { isFamilyFriendly } from "./safety";
 import { isSameOrigin, safeEqual } from "./security";
 
 const MAX_TEXT_LENGTH = 300;
@@ -104,6 +105,12 @@ function budgetLine(pc: PriceContext): Html | false {
 /** JSON for the wish form's live preview (public/wish-form.js). */
 async function previewJson(ctx: Ctx, env: Env, me: Participant): Promise<Response> {
   const link = normaliseUrl(ctx.url.searchParams.get("url") ?? "");
+  if (link && !(await isFamilyFriendly(new URL(link).hostname))) {
+    return new Response(JSON.stringify({ blocked: true }), {
+      status: 422,
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+    });
+  }
   const preview = link ? await cachedPreview(env.DB, link, me.id) : null;
   const limited = Boolean(link) && preview === null;
   const rates = preview?.price != null ? await getRates(env.DB) : null;
@@ -174,6 +181,9 @@ export async function handleParticipant(
       const rawUrl = String(form.get(`url${i}`) ?? "").trim();
       const link = normaliseUrl(rawUrl);
       if (link === null) return errorPage(ctx, 400, t.badUrl(rawUrl.slice(0, 100)));
+      if (link && !(await isFamilyFriendly(new URL(link).hostname))) {
+        return errorPage(ctx, 400, t.notFamilyFriendly(new URL(link).hostname));
+      }
       if (text || link) entered.push({ text, url: link });
     }
     // Look up product details (cached for a day, so prices stay fairly
@@ -243,10 +253,12 @@ ${assignment}
   <h2>${t.yourWishes}</h2>
   ${url.searchParams.has("saved") && html`<p class="notice">${t.saved}</p>`}
   <p class="muted">${t.wishesHelp}</p>
+  <p class="policy">🎄 ${t.familyPolicy}</p>
   ${budgetLine(pc)}
   <form method="post" action="${participantPath(me)}" class="wish-form"
     data-preview="${`/p/${me.id}/preview?key=${encodeURIComponent(me.access_key)}`}"
-    data-looking="${t.lookingUp}" data-none="${t.nothingFound}" data-limited="${t.tooManyLookups}">
+    data-looking="${t.lookingUp}" data-none="${t.nothingFound}" data-limited="${t.tooManyLookups}"
+    data-blocked="${t.blockedLink}">
     ${ideaFields}
     <button type="submit">${t.saveWishes}</button>
   </form>

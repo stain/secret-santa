@@ -238,6 +238,14 @@ export async function getWishes(db: D1Database, participantId: string): Promise<
 }
 
 /** Replaces a participant's wish ideas; positions are renumbered from 1. */
+/** Removes all of a participant's wishes (admin moderation). */
+export async function clearWishes(db: D1Database, chainId: string, id: string): Promise<void> {
+  await db
+    .prepare("DELETE FROM wishes WHERE participant_id = (SELECT id FROM participants WHERE id = ? AND chain_id = ?)")
+    .bind(id, chainId)
+    .run();
+}
+
 export async function setWishes(db: D1Database, id: string, wishes: Omit<Wish, "position">[]): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM wishes WHERE participant_id = ?").bind(id),

@@ -42,6 +42,7 @@
     const description = document.getElementById(`text${n}`);
     const link = input.value.trim();
     if (lastLookedUp.get(n) === link) return;
+    input.setCustomValidity("");
     lastLookedUp.set(n, link);
     if (!link) {
       box.replaceChildren();
@@ -53,12 +54,19 @@
     message(box, form.dataset.looking);
     try {
       const res = await fetch(`${endpoint}&url=${encodeURIComponent(link)}`);
-      const data = res.ok ? await res.json() : {};
+      const data = await res.json().catch(() => ({}));
       if (lastLookedUp.get(n) !== link) return; // a newer link was entered meanwhile
       if (res.status === 429) {
         message(box, form.dataset.limited);
         return;
       }
+      if (res.status === 422 && data.blocked) {
+        message(box, form.dataset.blocked);
+        description.placeholder = "";
+        input.setCustomValidity(form.dataset.blocked); // the browser won't submit it
+        return;
+      }
+      input.setCustomValidity("");
       if (data.title || data.image) {
         show(box, data);
         // The name is used when the description is left empty.

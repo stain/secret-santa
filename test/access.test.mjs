@@ -82,3 +82,18 @@ test("admin pages need the password", async () => {
     assert.equal(await status(`${group}/${action}`, { method: "POST", headers: form({ Origin: BASE }), body: "x=1" }), 401, action);
   }
 });
+
+test("links to sites that aren't family-friendly are refused (needs network)", async () => {
+  const [a] = people;
+  const adult = encodeURIComponent("https://www.pornhub.com/");
+  const lookup = await fetch(`${BASE}/p/${a.id}/preview?key=${a.key}&url=${adult}`);
+  assert.equal(lookup.status, 422);
+  assert.deepEqual(await lookup.json(), { blocked: true });
+  const save = await fetch(`${BASE}/p/${a.id}?key=${a.key}`, {
+    method: "POST",
+    headers: form({ Origin: BASE }),
+    body: `url1=${adult}`,
+    redirect: "manual",
+  });
+  assert.equal(save.status, 400);
+});

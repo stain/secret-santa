@@ -62,17 +62,17 @@ npm run deploy
 
 ## Personal data and GDPR
 
-Each group's **organiser** is the data controller: they decide to run the event and are responsible for the participants' data. Cloudflare processes it on their behalf. The app sends no email: the organiser sends each private link from their own email program (the admin page's `mailto:` links). The app is built to make that easy to do properly:
+The **data controller**, named on the admin home page and shown at the top of the privacy notice, is responsible for the participants' data: normally whoever runs the app. Each group can also name its own organiser as a contact. Cloudflare processes it on their behalf. The app sends no email: the organiser sends each private link from their own email program (the admin page's `mailto:` links). The app is built to make that easy to do properly:
 
 - **Data minimisation:** only names, email addresses, wishes and the draw are stored. There are no IP addresses, analytics or tracking. Email addresses are shown only to the admin.
-- **Transparency:** the privacy notice at `/privacy` (English, Spanish, Norwegian) is linked from every page and from the invitation email. Each participant's page names the organiser and the deletion date.
+- **Transparency:** the privacy notice at `/privacy` (English, Spanish, Norwegian) names the data controller and is linked from every page and from the invitation email. Each participant's page also names the data controller, any group organiser, and the deletion date.
 - **Storage limitation:** each group has an end date (default 31 January). A daily cron trigger (`scheduled` in `src/index.ts`) deletes groups the day after, with all their participants and wishes. Product lookups and rate-limit records are kept for one day.
 - **Rights:** participants can download their data as JSON and change or delete their wishes. The admin can correct names and email addresses without redoing the draw, and removing someone deletes all their data.
 - **No third parties in the browser:** the font is served from the app, and product photos are passed through the Worker (`/img`), so visitors' browsers contact no other servers.
 - **Location and logs:** create the database with `--jurisdiction eu`. Workers Logs are off, because they would record private links and IP addresses.
 
 **What the organiser still has to do:**
-- Fill in their name and contact address on each group's admin page before sending links.
+- Enter the data controller's name and contact on the admin home page before sending links (group pages warn until this is done).
 - Answer participants' requests.
 - Keep the privacy notice in `src/privacy.ts` accurate if the deployment differs (for example, a database outside the EU).
 - Accept Cloudflare's data processing terms, which are part of its self-serve agreement.

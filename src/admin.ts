@@ -8,12 +8,14 @@ import {
   deleteChain,
   drawChain,
   getChain,
+  getSettings,
   listChains,
   listParticipants,
   listWishes,
   removeParticipant,
   setBudget,
   setPrivacy,
+  setSettings,
   updateParticipant,
   type Participant,
 } from "./db";
@@ -69,6 +71,15 @@ export async function handleAdmin(ctx: Ctx, request: Request, env: Env, path: st
       return redirect(`/admin/chains/${await createChain(env.DB, name, ctx.currency)}`);
     }
     return adminHome(ctx, env);
+  }
+
+  // /admin/settings
+  if (path[0] === "settings" && path.length === 1 && post) {
+    const controllerName = field("controller_name").slice(0, 200);
+    const controllerContact = field("controller_contact").slice(0, 300);
+    if (!controllerName || !controllerContact) return errorPage(ctx, 400, t.needController);
+    await setSettings(env.DB, { controllerName, controllerContact });
+    return redirect("/admin");
   }
 
   // /admin/chains/<id>[/action[/<participant id>]]
@@ -137,10 +148,24 @@ export async function handleAdmin(ctx: Ctx, request: Request, env: Env, path: st
 async function adminHome(ctx: Ctx, env: Env): Promise<Response> {
   const { t } = ctx;
   const chains = await listChains(env.DB);
+  const settings = await getSettings(env.DB);
   return page(
     ctx,
     t.adminTitle,
     html`<h1>${t.workshop}</h1>
+<section class="card">
+  <h2>${t.controllerHeading}</h2>
+  ${!settings.controllerName && html`<p class="warning">${t.controllerWarning}</p>`}
+  <p class="muted">${t.controllerHelp}</p>
+  <form method="post" action="/admin/settings" class="inline">
+    <div class="grow"><label for="controller_name">${t.controllerName}</label>
+      <input id="controller_name" name="controller_name" required maxlength="200" value="${settings.controllerName}"></div>
+    <div class="grow"><label for="controller_contact">${t.controllerContact}</label>
+      <input id="controller_contact" name="controller_contact" required maxlength="300" value="${settings.controllerContact}"></div>
+    <button type="submit">${t.save}</button>
+  </form>
+  <p><a href="/privacy">${t.privacyTitle}</a></p>
+</section>
 <section class="card">
   <h2>${t.groups}</h2>
   ${chains.length
@@ -167,6 +192,7 @@ async function chainPage(ctx: Ctx, env: Env, chainId: string): Promise<Response>
   const people = await listParticipants(env.DB, chainId);
   const wishes = await listWishes(env.DB, chainId);
   const rates = await getRates(env.DB);
+  const settings = await getSettings(env.DB);
   const byId = new Map(people.map((p) => [p.id, p]));
   const base = `/admin/chains/${chain.id}`;
   const added = url.searchParams.get("added");
@@ -189,7 +215,7 @@ async function chainPage(ctx: Ctx, env: Env, chainId: string): Promise<Response>
 ${added !== null && html`<p class="notice">${t.added(Number(added), Number(url.searchParams.get("skipped") ?? 0))}</p>`}
 ${url.searchParams.has("drawn") && html`<p class="notice">${t.namesDrawn}</p>`}
 
-${!chain.organiser && html`<p class="warning">${t.organiserWarning}</p>`}
+${!settings.controllerName && html`<p class="warning"><a href="/admin">${t.controllerWarning}</a></p>`}
 
 <section class="card">
   <h2>${t.organiserHeading}</h2>

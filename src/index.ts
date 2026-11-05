@@ -27,7 +27,7 @@ export default {
 </section>`,
       );
     }
-    if (path[0] === "privacy" && path.length === 1) return privacyPage(ctx);
+    if (path[0] === "privacy" && path.length === 1) return privacyPage(ctx, env);
     if (path[0] === "img" && path.length === 1) return handleImage(request, env, execution);
     if (path[0] === "lang" && path.length === 2) return switchLanguage(ctx.url, path[1]);
     if (path[0] === "cur" && path.length === 2) return switchCurrency(ctx.url, path[1]);

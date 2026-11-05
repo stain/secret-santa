@@ -6,6 +6,7 @@ import {
   MAX_WISHES,
   getChain,
   getParticipant,
+  getSettings,
   getWishes,
   listParticipants,
   listWishes,
@@ -119,6 +120,7 @@ async function dataExport(env: Env, me: Participant): Promise<Response> {
   const chain = (await getChain(env.DB, me.chain_id))!;
   const giftee = me.giftee_id ? await getParticipant(env.DB, me.giftee_id) : null;
   const data = {
+    dataController: await getSettings(env.DB),
     group: { name: chain.name, organiser: chain.organiser, deletedAfter: chain.ends_on },
     you: { name: me.name, email: me.email, addedAt: me.created_at },
     youGiveTo: giftee?.name ?? null,
@@ -187,6 +189,7 @@ export async function handleParticipant(
   if (request.method !== "GET") return errorPage(ctx, 405, t.methodNotAllowed);
 
   const chain = (await getChain(env.DB, me.chain_id))!;
+  const settings = await getSettings(env.DB);
   const everyone = await listParticipants(env.DB, me.chain_id);
   const wishes = await listWishes(env.DB, me.chain_id);
   const pc: PriceContext = { ctx, rates: await getRates(env.DB), chain };
@@ -255,9 +258,10 @@ ${assignment}
 </section>
 <section class="card your-data">
   <h2>${t.yourData}</h2>
-  ${chain.organiser
-    ? html`<p>${t.organiserContact} <strong>${chain.organiser}</strong></p>`
-    : html`<p class="muted">${t.organiserMissing}</p>`}
+  ${settings.controllerName
+    ? html`<p>${t.controller} <strong>${settings.controllerName}</strong>${settings.controllerContact && ` (${settings.controllerContact})`}</p>`
+    : html`<p class="muted">${t.controllerNotSet}</p>`}
+  ${chain.organiser && html`<p>${t.groupOrganiser} <strong>${chain.organiser}</strong></p>`}
   ${chain.ends_on && html`<p>${t.deletedOn(formatDate(ctx, chain.ends_on))}</p>`}
   <p>${t.yourDataHelp}</p>
   <p><a href="${`/p/${me.id}/data?key=${encodeURIComponent(me.access_key)}`}" download>⬇️ ${t.downloadData}</a> · <a href="/privacy">${t.privacyLink}</a></p>

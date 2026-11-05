@@ -33,8 +33,28 @@ export interface Wish {
   currency: string;
 }
 
+/** Site-wide settings, set on the admin home page. */
+export interface Settings {
+  controllerName: string; // data controller named in the privacy notice (GDPR)
+  controllerContact: string;
+}
+
 export const MIN_PARTICIPANTS = 3;
 export const MAX_WISHES = 3;
+
+export async function getSettings(db: D1Database): Promise<Settings> {
+  const { results } = await db.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>();
+  const get = (key: string) => results.find((r) => r.key === key)?.value ?? "";
+  return { controllerName: get("controller_name"), controllerContact: get("controller_contact") };
+}
+
+export async function setSettings(db: D1Database, s: Settings): Promise<void> {
+  const upsert = "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value";
+  await db.batch([
+    db.prepare(upsert).bind("controller_name", s.controllerName),
+    db.prepare(upsert).bind("controller_contact", s.controllerContact),
+  ]);
+}
 
 export async function listChains(db: D1Database) {
   const { results } = await db

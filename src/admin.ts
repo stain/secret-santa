@@ -12,11 +12,13 @@ import {
   listParticipants,
   listWishes,
   removeParticipant,
+  setBudget,
   type Participant,
 } from "./db";
 import { html, redirect } from "./html";
 import type { Ctx } from "./i18n";
 import { errorPage, page } from "./layout";
+import { CURRENCIES, budgetText, getRates, isCurrency } from "./money";
 import { participantPath } from "./participant";
 import { isSameOrigin, requireAdmin } from "./security";
 
@@ -62,7 +64,7 @@ export async function handleAdmin(ctx: Ctx, request: Request, env: Env, path: st
     if (post) {
       const name = field("name").slice(0, 100);
       if (!name) return errorPage(ctx, 400, t.needGroupName);
-      return redirect(`/admin/chains/${await createChain(env.DB, name)}`);
+      return redirect(`/admin/chains/${await createChain(env.DB, name, ctx.currency)}`);
     }
     return adminHome(ctx, env);
   }
@@ -84,6 +86,16 @@ export async function handleAdmin(ctx: Ctx, request: Request, env: Env, path: st
       if (bad.length) return errorPage(ctx, 400, t.badLines(bad.join(" | ")));
       const added = await addParticipants(env.DB, chain.id, people);
       return redirect(`${back}?added=${added}&skipped=${people.length - added}`);
+    }
+    case "budget": {
+      const raw = field("limit").replace(",", ".");
+      const limit = raw === "" ? null : Number(raw);
+      const currency = field("currency");
+      if ((limit !== null && !(limit > 0 && Number.isFinite(limit))) || !isCurrency(currency)) {
+        return errorPage(ctx, 400, t.badBudget);
+      }
+      await setBudget(env.DB, chain.id, limit, currency);
+      return redirect(back);
     }
     case "remove":
       await removeParticipant(env.DB, chain.id, path[3] ?? "");
@@ -134,6 +146,7 @@ async function chainPage(ctx: Ctx, env: Env, chainId: string): Promise<Response>
   const chain = (await getChain(env.DB, chainId))!;
   const people = await listParticipants(env.DB, chainId);
   const wishes = await listWishes(env.DB, chainId);
+  const rates = await getRates(env.DB);
   const byId = new Map(people.map((p) => [p.id, p]));
   const base = `/admin/chains/${chain.id}`;
   const added = url.searchParams.get("added");
@@ -173,6 +186,22 @@ ${url.searchParams.has("drawn") && html`<p class="notice">${t.namesDrawn}</p>`}
         </tr>`,
       )}</tbody></table>`
     : html`<p class="muted">${t.nobody}</p>`}
+</section>
+
+<section class="card">
+  <h2>${t.budget}</h2>
+  <p class="muted">${t.budgetHelp}</p>
+  <form method="post" action="${base}/budget" class="inline">
+    <div><label for="limit">${t.budgetAmount}</label>
+      <input id="limit" name="limit" type="number" min="0" step="any" inputmode="decimal" value="${chain.price_limit ?? ""}"></div>
+    <div><label for="currency">${t.currency}</label>
+      <select id="currency" name="currency">${CURRENCIES.map(
+        (c) => html`<option${c === chain.currency && html` selected`}>${c}</option>`,
+      )}</select></div>
+    <button type="submit">${t.saveBudget}</button>
+  </form>
+  ${chain.price_limit !== null && isCurrency(chain.currency) &&
+    html`<p class="budget">💰 ${budgetText(ctx, rates, chain.price_limit, chain.currency)}</p>`}
 </section>
 
 <section class="card">

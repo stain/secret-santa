@@ -4,6 +4,7 @@ import { handleAdmin } from "./admin";
 import { html } from "./html";
 import { resolveContext, switchLanguage } from "./i18n";
 import { errorPage, page } from "./layout";
+import { switchCurrency } from "./money";
 import { handleParticipant } from "./participant";
 
 export default {
@@ -24,7 +25,10 @@ export default {
       );
     }
     if (path[0] === "lang" && path.length === 2) return switchLanguage(ctx.url, path[1]);
-    if (path[0] === "p" && path.length === 2) return handleParticipant(ctx, request, env, path[1]);
+    if (path[0] === "cur" && path.length === 2) return switchCurrency(ctx.url, path[1]);
+    if (path[0] === "p" && (path.length === 2 || (path.length === 3 && path[2] === "preview"))) {
+      return handleParticipant(ctx, request, env, path[1], path[2]);
+    }
     if (path[0] === "admin") return handleAdmin(ctx, request, env, path.slice(1));
     return errorPage(ctx, 404, t.notFound);
   },

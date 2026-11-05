@@ -1,14 +1,17 @@
-// Looks up a product's name and photo from a wish link, when the wish is
-// saved. Sources, best first: schema.org Product in JSON-LD, OpenGraph and
-// Twitter card meta tags, Amazon's product markup (which has neither), then
-// the page's <title> and <link rel="image_src">.
+// Looks up a product's name, photo and price from a wish link. Sources, best
+// first: schema.org Product (with its Offer) in JSON-LD, OpenGraph, product
+// and Twitter meta tags, microdata, Amazon's product markup (which has none
+// of those), then the page's <title> and <link rel="image_src">.
 
 export interface Preview {
   title: string;
   image: string;
+  price: number | null;
+  currency: string; // ISO 4217; "" when price is null
 }
 
-const EMPTY: Preview = { title: "", image: "" };
+const EMPTY: Preview = { title: "", image: "", price: null, currency: "" };
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_BYTES = 1_500_000;
 const MAX_REDIRECTS = 5;
 const TIMEOUT_MS = 6000;
@@ -124,6 +127,56 @@ function absoluteHttps(src: string, base: string): string {
   }
 }
 
+/** Reads "1,234.50", "1.234,50", "1 234" or a number; null if not a price. */
+function parseAmount(raw: unknown): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  if (typeof raw !== "string") return null;
+  const digits = decodeEntities(raw).replace(/[^\d.,]/g, "");
+  if (!/\d/.test(digits)) return null;
+  const lastSep = Math.max(digits.lastIndexOf("."), digits.lastIndexOf(","));
+  // A last separator followed by exactly three digits groups thousands.
+  const decimals = lastSep >= 0 && digits.length - lastSep - 1 !== 3;
+  const whole = (decimals ? digits.slice(0, lastSep) : digits).replace(/[.,]/g, "");
+  const n = Number(decimals ? `${whole}.${digits.slice(lastSep + 1)}` : whole);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Guesses the currency of a displayed price such as "£4.99" or "kr 299". */
+function currencyOfText(text: string, hostname: string): string {
+  const tld = hostname.split(".").pop() ?? "";
+  const code = text.match(/\b(MXN|GBP|NOK|EUR|USD|SEK|DKK)\b/)?.[1];
+  if (code) return code;
+  if (/MX\$/.test(text)) return "MXN";
+  if (/US\$/.test(text)) return "USD";
+  if (text.includes("£")) return "GBP";
+  if (text.includes("€")) return "EUR";
+  if (/kr/i.test(text)) return ({ no: "NOK", se: "SEK", dk: "DKK" } as Record<string, string>)[tld] ?? "";
+  if (text.includes("$")) return ({ mx: "MXN", ca: "CAD", au: "AUD" } as Record<string, string>)[tld] ?? "USD";
+  return "";
+}
+
+/** The first priced Offer (or AggregateOffer) in a schema.org offers value. */
+function offerPrice(offers: unknown, depth = 0): { price: number; currency: string } | null {
+  if (depth > 3 || !offers || typeof offers !== "object") return null;
+  if (Array.isArray(offers)) {
+    for (const o of offers) {
+      const found = offerPrice(o, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  const o = offers as Record<string, unknown>;
+  const price = parseAmount(o.price ?? o.lowPrice);
+  const currency = o.priceCurrency;
+  if (price !== null && typeof currency === "string") return { price, currency };
+  return offerPrice(o.priceSpecification, depth + 1);
+}
+
+function validPrice(price: number | null, currency: string | undefined): Pick<Preview, "price" | "currency"> {
+  const code = (currency ?? "").trim().toUpperCase();
+  return price !== null && price > 0 && /^[A-Z]{3}$/.test(code) ? { price, currency: code } : { price: null, currency: "" };
+}
+
 export async function fetchPreview(url: string): Promise<Preview> {
   try {
     const page = await fetchPage(url);
@@ -136,7 +189,11 @@ export async function fetchPreview(url: string): Promise<Preview> {
     let pageTitle = "";
     let amazonTitle = "";
     let amazonImage = "";
+    let amazonPrice = "";
+    let amazonPrices = 0;
     let linkImage = "";
+    let itemPrice = "";
+    let itemCurrency = "";
 
     const rewriter = new HTMLRewriter()
       .on('script[type="application/ld+json"]', {
@@ -154,6 +211,21 @@ export async function fetchPreview(url: string): Promise<Preview> {
       .on("img#landingImage", {
         element(el) {
           amazonImage ||= el.getAttribute("data-old-hires") || el.getAttribute("src") || "";
+        },
+      })
+      // The first displayed price; .a-offscreen holds it as plain text.
+      .on(".a-price .a-offscreen", {
+        element: () => void amazonPrices++,
+        text: (t) => void (amazonPrices === 1 && (amazonPrice += t.text)),
+      })
+      .on('[itemprop="price"]', {
+        element(el) {
+          itemPrice ||= el.getAttribute("content") ?? "";
+        },
+      })
+      .on('[itemprop="priceCurrency"]', {
+        element(el) {
+          itemCurrency ||= el.getAttribute("content") ?? "";
         },
       })
       .on('link[rel="image_src"]', {
@@ -204,9 +276,42 @@ export async function fetchPreview(url: string): Promise<Preview> {
       absoluteHttps(meta.get("image") ?? "", base) ||
       absoluteHttps(amazonImage, base) ||
       absoluteHttps(linkImage, base);
-    return { title, image };
+    const host = new URL(base).hostname;
+    const offer = offerPrice(product?.offers);
+    const priced = [
+      validPrice(offer?.price ?? null, offer?.currency),
+      validPrice(parseAmount(meta.get("product:price:amount")), meta.get("product:price:currency")),
+      validPrice(parseAmount(meta.get("og:price:amount")), meta.get("og:price:currency")),
+      validPrice(parseAmount(itemPrice), itemCurrency),
+      validPrice(parseAmount(amazonPrice), currencyOfText(amazonPrice, host)),
+    ].find((p) => p.price !== null);
+    return { title, image, ...(priced ?? { price: null, currency: "" }) };
   } catch {
     // Timeouts, network errors and shops that block robots: no preview.
     return EMPTY;
   }
+}
+
+/** fetchPreview, remembering successful lookups in D1 for a day. */
+export async function cachedPreview(db: D1Database, url: string): Promise<Preview> {
+  const hit = await db
+    .prepare("SELECT title, image, price, currency, fetched_at FROM previews WHERE url = ?")
+    .bind(url)
+    .first<Preview & { fetched_at: string }>();
+  if (hit && Date.now() - Date.parse(hit.fetched_at) < CACHE_MAX_AGE_MS) {
+    const { fetched_at: _, ...preview } = hit;
+    return preview;
+  }
+  const preview = await fetchPreview(url);
+  if (preview.title || preview.image) {
+    await db
+      .prepare(
+        `INSERT INTO previews (url, title, image, price, currency, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (url) DO UPDATE SET title = excluded.title, image = excluded.image,
+           price = excluded.price, currency = excluded.currency, fetched_at = excluded.fetched_at`,
+      )
+      .bind(url, preview.title, preview.image, preview.price, preview.currency, new Date().toISOString())
+      .run();
+  }
+  return preview;
 }

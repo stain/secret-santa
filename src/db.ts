@@ -7,6 +7,8 @@ export interface Chain {
   name: string;
   created_at: string;
   drawn_at: string | null;
+  price_limit: number | null; // suggested budget, not enforced
+  currency: string;
 }
 
 export interface Participant {
@@ -24,6 +26,8 @@ export interface Wish {
   url: string;
   title: string; // looked up from url, see preview.ts
   image: string;
+  price: number | null;
+  currency: string;
 }
 
 export const MIN_PARTICIPANTS = 3;
@@ -44,10 +48,14 @@ export function getChain(db: D1Database, id: string) {
   return db.prepare("SELECT * FROM chains WHERE id = ?").bind(id).first<Chain>();
 }
 
-export async function createChain(db: D1Database, name: string): Promise<string> {
+export async function createChain(db: D1Database, name: string, currency: string): Promise<string> {
   const id = crypto.randomUUID();
-  await db.prepare("INSERT INTO chains (id, name) VALUES (?, ?)").bind(id, name).run();
+  await db.prepare("INSERT INTO chains (id, name, currency) VALUES (?, ?, ?)").bind(id, name, currency).run();
   return id;
+}
+
+export async function setBudget(db: D1Database, id: string, limit: number | null, currency: string): Promise<void> {
+  await db.prepare("UPDATE chains SET price_limit = ?, currency = ? WHERE id = ?").bind(limit, currency, id).run();
 }
 
 export async function deleteChain(db: D1Database, id: string): Promise<void> {
@@ -126,7 +134,7 @@ export async function drawChain(db: D1Database, chainId: string): Promise<void> 
 export async function listWishes(db: D1Database, chainId: string): Promise<Map<string, Wish[]>> {
   const { results } = await db
     .prepare(
-      `SELECT w.participant_id, w.position, w.text, w.url, w.title, w.image
+      `SELECT w.participant_id, w.position, w.text, w.url, w.title, w.image, w.price, w.currency
          FROM wishes w JOIN participants p ON p.id = w.participant_id
         WHERE p.chain_id = ? ORDER BY w.position`,
     )
@@ -141,7 +149,7 @@ export async function listWishes(db: D1Database, chainId: string): Promise<Map<s
 
 export async function getWishes(db: D1Database, participantId: string): Promise<Wish[]> {
   const { results } = await db
-    .prepare("SELECT position, text, url, title, image FROM wishes WHERE participant_id = ? ORDER BY position")
+    .prepare("SELECT position, text, url, title, image, price, currency FROM wishes WHERE participant_id = ? ORDER BY position")
     .bind(participantId)
     .all<Wish>();
   return results;
@@ -155,8 +163,11 @@ export async function setWishes(db: D1Database, id: string, wishes: Omit<Wish, "
       .slice(0, MAX_WISHES)
       .map((w, i) =>
         db
-          .prepare("INSERT INTO wishes (participant_id, position, text, url, title, image) VALUES (?, ?, ?, ?, ?, ?)")
-          .bind(id, i + 1, w.text, w.url, w.title, w.image),
+          .prepare(
+            `INSERT INTO wishes (participant_id, position, text, url, title, image, price, currency)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(id, i + 1, w.text, w.url, w.title, w.image, w.price, w.currency),
       ),
   ]);
 }

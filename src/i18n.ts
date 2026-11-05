@@ -1,9 +1,12 @@
 // User interface strings in English, Spanish and Norwegian (Bokmål).
 // The language comes from the `lang` cookie (set by the flag links), then
-// the browser's Accept-Language header, then English.
+// the browser's Accept-Language header, then English. The display currency
+// comes from the `cur` cookie, else it follows the language.
 
+import { backParam, readCookie, rememberChoice } from "./cookies";
 import { MAX_WISHES } from "./db";
 import { html, type Html } from "./html";
+import { DEFAULT_CURRENCY, currencyFromCookie, type Currency } from "./money";
 
 const en = {
   langName: "English",
@@ -33,12 +36,21 @@ const en = {
   notDrawnText:
     "Santa's elves are still shuffling the names. Come back to this page later to find out whom you give a present to.",
   yourWishes: "Your wish list",
-  wishesHelp: `Up to ${MAX_WISHES} ideas. Add a link if you like, for example to a shop: we look up the product name and photo.`,
+  wishesHelp: `Up to ${MAX_WISHES} ideas. Paste a link to a product if you have one: we look up its name, photo and price.`,
   saved: "✨ Your wish list has been saved.",
   idea: (n: number) => `Idea ${n}`,
-  ideaText: "Description",
-  ideaLink: "Link (optional)",
-  foundPreview: "🔎 Found:",
+  ideaText: "Description, or a note about the link",
+  ideaLink: "Link to the product (optional)",
+  lookingUp: "🔎 Looking up the product…",
+  nothingFound: "Couldn't read product details from that page. Please add a description.",
+  currency: "Currency",
+  budget: "Suggested budget",
+  overBudget: "Over the suggested budget",
+  budgetHelp:
+    "A guide for everyone, not a rule: nothing is enforced. Leave the amount empty for no budget. Other currencies are shown converted and rounded, using the European Central Bank's daily rates.",
+  budgetAmount: "Amount",
+  saveBudget: "Save budget",
+  badBudget: "The budget must be a positive number.",
   saveWishes: "Send to the North Pole",
   everyonesWishes: "Everyone's wishes",
   you: "(you)",
@@ -100,7 +112,7 @@ export type Dict = typeof en;
 const es: Dict = {
   langName: "Español",
   flag: "🇪🇸",
-  siteTitle: "Amigo invisible",
+  siteTitle: "Santa Secreto",
   footer: "¡Jo, jo, jo! ❄️",
   language: "Idioma",
   errorTitle: "¡Ups!",
@@ -111,26 +123,35 @@ const es: Dict = {
 
   welcomeTitle: "Bienvenida",
   welcomeHeading: "¡Jo, jo, jo!",
-  welcomeText: "Quien organiza te enviará por correo un enlace privado a tu página del amigo invisible.",
+  welcomeText: "Quien organiza te enviará por correo un enlace privado a tu página de Santa Secreto.",
   welcomeLost: "¿Lo has perdido? Pide que te lo vuelvan a enviar.",
 
   badLink: "Este enlace no es válido. Comprueba que has copiado el enlace completo del correo.",
   hello: (name) => `¡Hola, ${name}!`,
   lead: (chain) =>
     html`Te damos la bienvenida a <strong>${chain}</strong>. No compartas el enlace de esta página: es tu llave privada.`,
-  youAreSantaFor: "Eres el amigo invisible de…",
+  youAreSantaFor: "Eres el Santa Secreto de…",
   theirWishes: (name) => `Lista de deseos de ${name}:`,
   noWishYet: (name) => `${name} todavía no ha añadido ningún deseo. ¡Vuelve más tarde!`,
   notDrawnHeading: "Todavía no se ha hecho el sorteo",
   notDrawnText:
     "Los elfos de Papá Noel todavía están mezclando los nombres. Vuelve a esta página más tarde para saber a quién le haces un regalo.",
   yourWishes: "Tu lista de deseos",
-  wishesHelp: `Hasta ${MAX_WISHES} ideas. Si quieres, añade un enlace, por ejemplo a una tienda: buscaremos el nombre y la foto del producto.`,
+  wishesHelp: `Hasta ${MAX_WISHES} ideas. Si tienes un enlace a un producto, pégalo: buscaremos su nombre, foto y precio.`,
   saved: "✨ Se ha guardado tu lista de deseos.",
   idea: (n) => `Idea ${n}`,
-  ideaText: "Descripción",
-  ideaLink: "Enlace (opcional)",
-  foundPreview: "🔎 Encontrado:",
+  ideaText: "Descripción, o una nota sobre el enlace",
+  ideaLink: "Enlace al producto (opcional)",
+  lookingUp: "🔎 Buscando el producto…",
+  nothingFound: "No se han podido leer los datos del producto de esa página. Añade una descripción.",
+  currency: "Moneda",
+  budget: "Presupuesto sugerido",
+  overBudget: "Supera el presupuesto sugerido",
+  budgetHelp:
+    "Una orientación para todos, no una norma: no se impone nada. Deja la cantidad vacía si no hay presupuesto. Las demás monedas se muestran convertidas y redondeadas con los tipos de cambio diarios del Banco Central Europeo.",
+  budgetAmount: "Cantidad",
+  saveBudget: "Guardar presupuesto",
+  badBudget: "El presupuesto debe ser un número positivo.",
   saveWishes: "Enviar al Polo Norte",
   everyonesWishes: "Los deseos de todos",
   you: "(tú)",
@@ -180,9 +201,9 @@ const es: Dict = {
   deleteHeading: "Eliminar grupo",
   deleteConfirm: (name) => `Eliminar «${name}», sus participantes y sus deseos`,
   deleteButton: "Eliminar grupo",
-  mailSubject: (chain) => `Tu enlace del amigo invisible: ${chain}`,
+  mailSubject: (chain) => `Tu enlace de Santa Secreto: ${chain}`,
   mailBody: (name, chain, link) =>
-    `Hola, ${name}:\n\nEsta es tu página privada del amigo invisible para «${chain}». ` +
+    `Hola, ${name}:\n\nEsta es tu página privada de Santa Secreto para «${chain}». ` +
     `Ábrela para ver a quién le haces un regalo y para añadir tus propios deseos:\n\n${link}\n\n` +
     `No compartas este enlace: cualquiera que lo tenga puede ver tu página.\n\n¡Jo, jo, jo!`,
 };
@@ -215,12 +236,21 @@ const nb: Dict = {
   notDrawnText:
     "Nissens alver stokker fortsatt navnene. Kom tilbake hit senere for å se hvem du skal gi en gave til.",
   yourWishes: "Din ønskeliste",
-  wishesHelp: `Opptil ${MAX_WISHES} ideer. Legg gjerne til en lenke, for eksempel til en nettbutikk, så henter vi produktnavn og bilde.`,
+  wishesHelp: `Opptil ${MAX_WISHES} ideer. Lim inn en lenke til et produkt hvis du har en, så henter vi navn, bilde og pris.`,
   saved: "✨ Ønskelisten din er lagret.",
   idea: (n) => `Idé ${n}`,
-  ideaText: "Beskrivelse",
-  ideaLink: "Lenke (valgfritt)",
-  foundPreview: "🔎 Fant:",
+  ideaText: "Beskrivelse, eller en merknad om lenken",
+  ideaLink: "Lenke til produktet (valgfritt)",
+  lookingUp: "🔎 Slår opp produktet …",
+  nothingFound: "Fant ikke produktinformasjon på den siden. Skriv gjerne en beskrivelse.",
+  currency: "Valuta",
+  budget: "Foreslått budsjett",
+  overBudget: "Over foreslått budsjett",
+  budgetHelp:
+    "En rettesnor for alle, ikke en regel: ingenting håndheves. La beløpet stå tomt hvis dere ikke vil ha et budsjett. Andre valutaer vises omregnet og avrundet etter Den europeiske sentralbankens dagskurser.",
+  budgetAmount: "Beløp",
+  saveBudget: "Lagre budsjett",
+  badBudget: "Budsjettet må være et positivt tall.",
   saveWishes: "Send til Nordpolen",
   everyonesWishes: "Alles ønsker",
   you: "(deg)",
@@ -285,6 +315,7 @@ export interface Ctx {
   lang: Lang;
   t: Dict;
   url: URL;
+  currency: Currency;
 }
 
 const COOKIE = "lang";
@@ -315,34 +346,26 @@ function fromAcceptLanguage(header: string): Lang | undefined {
 }
 
 export function resolveContext(request: Request): Ctx {
-  const cookie = (request.headers.get("Cookie") ?? "")
-    .split(";")
-    .map((c) => c.trim().split("="))
-    .find(([k]) => k === COOKIE)?.[1];
+  const cookie = readCookie(request, COOKIE);
   const lang = isLang(cookie)
     ? cookie
     : (fromAcceptLanguage(request.headers.get("Accept-Language") ?? "") ?? "en");
-  return { lang, t: DICTS[lang], url: new URL(request.url) };
+  return {
+    lang,
+    t: DICTS[lang],
+    url: new URL(request.url),
+    currency: currencyFromCookie(request) ?? DEFAULT_CURRENCY[lang],
+  };
 }
 
-/**
- * GET /lang/<code>?back=<path>: remember the choice in a cookie and return to
- * the page the flag was clicked on. Only same-site paths are accepted for back.
- */
+/** GET /lang/<code>?back=<path>: see rememberChoice. */
 export function switchLanguage(url: URL, code: string): Response {
-  const back = url.searchParams.get("back") ?? "/";
-  const location = back.startsWith("/") && !back.startsWith("//") && !back.startsWith("/\\") ? back : "/";
-  const headers = new Headers({ Location: location });
-  if (isLang(code)) {
-    const secure = url.protocol === "https:" ? "; Secure" : "";
-    headers.set("Set-Cookie", `${COOKIE}=${code}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`);
-  }
-  return new Response(null, { status: 303, headers });
+  return rememberChoice(url, COOKIE, isLang(code) ? code : null);
 }
 
 /** Flag links for the page header, each returning to the current page. */
 export function languageSwitcher(ctx: Ctx): Html {
-  const back = encodeURIComponent(ctx.url.pathname + ctx.url.search);
+  const back = backParam(ctx.url);
   return html`<nav class="lang" aria-label="${ctx.t.language}">${Object.entries(DICTS).map(
     ([code, d]) =>
       html`<a href="/lang/${code}?back=${back}" hreflang="${code}" lang="${code}" title="${d.langName}"${

@@ -1,4 +1,5 @@
 // A participant's private page: /p/<uuid>?key=<secret>
+// and its product lookup for the wish form: /p/<uuid>/preview?key=<secret>&url=<link>
 
 import {
   MAX_WISHES,
@@ -8,17 +9,20 @@ import {
   listParticipants,
   listWishes,
   setWishes,
+  type Chain,
   type Participant,
   type Wish,
 } from "./db";
 import { Html, html, redirect } from "./html";
 import type { Ctx } from "./i18n";
 import { errorPage, page } from "./layout";
-import { fetchPreview } from "./preview";
+import { budgetText, convert, getRates, isCurrency, priceText, type Rates } from "./money";
+import { cachedPreview } from "./preview";
 import { safeEqual } from "./security";
 
 const MAX_TEXT_LENGTH = 300;
 const MAX_URL_LENGTH = 2000;
+const LINK_OUT = new Html('target="_blank" rel="noopener noreferrer nofollow"');
 
 export function participantPath(p: Pick<Participant, "id" | "access_key">): string {
   return `/p/${p.id}?key=${encodeURIComponent(p.access_key)}`;
@@ -50,26 +54,74 @@ function hostOf(url: string): string {
   return new URL(url).hostname.replace(/^www\./, "");
 }
 
-/** A list of wish ideas; linked ones show as product cards with name and photo. */
-function renderWishes(wishes: Wish[]): Html {
-  const out = 'target="_blank" rel="noopener noreferrer nofollow"';
+/** Everything a wish list needs to show prices against the group's budget. */
+interface PriceContext {
+  ctx: Ctx;
+  rates: Rates;
+  chain: Chain;
+}
+
+function isOverBudget({ rates, chain }: PriceContext, w: Wish): boolean {
+  if (chain.price_limit === null || w.price === null) return false;
+  const inBudgetCurrency = convert(w.price, w.currency, chain.currency, rates);
+  return inBudgetCurrency !== null && inBudgetCurrency > chain.price_limit;
+}
+
+/** A list of wish ideas; linked ones show as product cards with name, photo and price. */
+function renderWishes(pc: PriceContext, wishes: Wish[]): Html {
+  const { ctx, rates } = pc;
   return html`<ol class="ideas">${wishes.map((w) => {
     if (!w.url) return html`<li>${w.text}</li>`;
     return html`<li class="product">
-      ${w.image && html`<a href="${w.url}" ${new Html(out)} tabindex="-1"><img src="${w.image}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`}
+      ${w.image && html`<a href="${w.url}" ${LINK_OUT} tabindex="-1"><img src="${w.image}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`}
       <div>
-        <a class="product-title" href="${w.url}" ${new Html(out)}>${w.title || w.text || hostOf(w.url)}</a>
+        <a class="product-title" href="${w.url}" ${LINK_OUT}>${w.title || w.text || hostOf(w.url)}</a>
         ${w.title && w.text && html`<div class="note">${w.text}</div>`}
+        ${w.price !== null && html`<div class="price">${priceText(ctx, rates, w.price, w.currency)}${
+          isOverBudget(pc, w) && html` <span class="over">${ctx.t.overBudget}</span>`
+        }</div>`}
         <span class="shop">${hostOf(w.url)} ↗</span>
       </div>
     </li>`;
   })}</ol>`;
 }
 
-export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id: string): Promise<Response> {
+function budgetLine(pc: PriceContext): Html | false {
+  const { ctx, rates, chain } = pc;
+  return (
+    chain.price_limit !== null &&
+    isCurrency(chain.currency) &&
+    html`<p class="budget">💰 ${ctx.t.budget}: <strong>${budgetText(ctx, rates, chain.price_limit, chain.currency)}</strong></p>`
+  );
+}
+
+/** JSON for the wish form's live preview (public/wish-form.js). */
+async function previewJson(ctx: Ctx, env: Env): Promise<Response> {
+  const link = normaliseUrl(ctx.url.searchParams.get("url") ?? "");
+  const preview = link ? await cachedPreview(env.DB, link) : null;
+  const rates = preview?.price != null ? await getRates(env.DB) : null;
+  const body = {
+    title: preview?.title ?? "",
+    image: preview?.image ?? "",
+    price: preview?.price != null && rates ? priceText(ctx, rates, preview.price, preview.currency) : "",
+  };
+  return new Response(JSON.stringify(body), {
+    status: link === null ? 400 : 200,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+  });
+}
+
+export async function handleParticipant(
+  ctx: Ctx,
+  request: Request,
+  env: Env,
+  id: string,
+  sub?: string,
+): Promise<Response> {
   const { t, url } = ctx;
   const me = await authorise(env, id, url);
   if (!me) return errorPage(ctx, 404, t.badLink);
+  if (sub === "preview") return previewJson(ctx, env);
 
   if (request.method === "POST") {
     const form = await request.formData().catch(() => new FormData());
@@ -81,14 +133,16 @@ export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id
       if (link === null) return errorPage(ctx, 400, t.badUrl(rawUrl.slice(0, 100)));
       if (text || link) entered.push({ text, url: link });
     }
-    // Look up product details for new or changed links; keep earlier lookups
-    // of unchanged links, unless they found nothing last time.
+    // Look up product details (cached for a day, so prices stay fairly
+    // current); if a lookup fails, keep what an unchanged link had before.
     const previous = await getWishes(env.DB, me.id);
     const wishes = await Promise.all(
       entered.map(async (w) => {
-        if (!w.url) return { ...w, title: "", image: "" };
-        const known = previous.find((p) => p.url === w.url && (p.title || p.image));
-        return { ...w, ...(known ? { title: known.title, image: known.image } : await fetchPreview(w.url)) };
+        if (!w.url) return { ...w, title: "", image: "", price: null, currency: "" };
+        const found = await cachedPreview(env.DB, w.url);
+        const known = previous.find((p) => p.url === w.url);
+        const { title, image, price, currency } = found.title || found.image || !known ? found : known;
+        return { ...w, title, image, price, currency };
       }),
     );
     await setWishes(env.DB, me.id, wishes);
@@ -96,9 +150,10 @@ export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id
   }
   if (request.method !== "GET") return errorPage(ctx, 405, t.methodNotAllowed);
 
-  const chain = await getChain(env.DB, me.chain_id);
+  const chain = (await getChain(env.DB, me.chain_id))!;
   const everyone = await listParticipants(env.DB, me.chain_id);
   const wishes = await listWishes(env.DB, me.chain_id);
+  const pc: PriceContext = { ctx, rates: await getRates(env.DB), chain };
   const giftee = everyone.find((p) => p.id === me.giftee_id);
   const gifteeWishes = giftee ? (wishes.get(giftee.id) ?? []) : [];
   const myWishes = wishes.get(me.id) ?? [];
@@ -107,25 +162,30 @@ export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id
     ? html`<section class="card gift">
         <h2>${t.youAreSantaFor}</h2>
         <p class="giftee">🎁 ${giftee.name} 🎁</p>
+        ${budgetLine(pc)}
         ${gifteeWishes.length
-          ? html`<p>${t.theirWishes(giftee.name)}</p><div class="wishbox">${renderWishes(gifteeWishes)}</div>`
+          ? html`<p>${t.theirWishes(giftee.name)}</p><div class="wishbox">${renderWishes(pc, gifteeWishes)}</div>`
           : html`<p class="muted">${t.noWishYet(giftee.name)}</p>`}
       </section>`
     : html`<section class="card gift">
         <h2>${t.notDrawnHeading}</h2>
         <p>${t.notDrawnText}</p>
+        ${budgetLine(pc)}
       </section>`;
 
+  // The link comes first, so people paste a product before describing it.
   const ideaFields = Array.from({ length: MAX_WISHES }, (_, i) => {
     const n = i + 1;
     const w = myWishes[i];
     return html`<fieldset class="idea">
       <legend>${t.idea(n)}</legend>
-      <label for="text${n}">${t.ideaText}</label>
-      <input id="text${n}" name="text${n}" maxlength="${MAX_TEXT_LENGTH}" value="${w?.text ?? ""}">
       <label for="url${n}">${t.ideaLink}</label>
-      <input id="url${n}" name="url${n}" type="url" maxlength="${MAX_URL_LENGTH}" placeholder="https://" value="${w?.url ?? ""}">
-      ${w?.title && html`<p class="found">${t.foundPreview} ${w.title}</p>`}
+      <input id="url${n}" name="url${n}" type="url" maxlength="${MAX_URL_LENGTH}" placeholder="https://" value="${w?.url ?? ""}" data-preview-for="${n}">
+      <div class="preview" id="preview${n}" aria-live="polite">${w?.url && (w.title || w.image) && html`
+        ${w.image && html`<img src="${w.image}" alt="" referrerpolicy="no-referrer">`}
+        <div><strong>${w.title}</strong>${w.price !== null && html`<div class="price">${priceText(ctx, pc.rates, w.price, w.currency)}</div>`}</div>`}</div>
+      <label for="text${n}">${t.ideaText}</label>
+      <input id="text${n}" name="text${n}" maxlength="${MAX_TEXT_LENGTH}" value="${w?.text ?? ""}" placeholder="${w?.title ?? ""}">
     </fieldset>`;
   });
 
@@ -133,13 +193,16 @@ export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id
     ctx,
     me.name,
     html`<h1>${t.hello(me.name)}</h1>
-<p class="lead">${t.lead(chain?.name ?? "")}</p>
+<p class="lead">${t.lead(chain.name)}</p>
 ${assignment}
 <section class="card">
   <h2>${t.yourWishes}</h2>
   ${url.searchParams.has("saved") && html`<p class="notice">${t.saved}</p>`}
   <p class="muted">${t.wishesHelp}</p>
-  <form method="post" action="${participantPath(me)}">
+  ${budgetLine(pc)}
+  <form method="post" action="${participantPath(me)}" class="wish-form"
+    data-preview="${`/p/${me.id}/preview?key=${encodeURIComponent(me.access_key)}`}"
+    data-looking="${t.lookingUp}" data-none="${t.nothingFound}">
     ${ideaFields}
     <button type="submit">${t.saveWishes}</button>
   </form>
@@ -150,9 +213,10 @@ ${assignment}
     ${everyone.map((p) => {
       const theirs = wishes.get(p.id) ?? [];
       return html`<li><span class="who">${p.name}${p.id === me.id && ` ${t.you}`}</span>
-        ${theirs.length ? renderWishes(theirs) : html`<span class="muted">${t.noWishes}</span>`}</li>`;
+        ${theirs.length ? renderWishes(pc, theirs) : html`<span class="muted">${t.noWishes}</span>`}</li>`;
     })}
   </ul>
-</section>`,
+</section>
+<script src="/wish-form.js" defer></script>`,
   );
 }

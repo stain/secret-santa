@@ -2,6 +2,7 @@
 
 import { html, type Html } from "./html";
 import { languageSwitcher, type Ctx } from "./i18n";
+import { currencySwitcher } from "./money";
 
 const SECURITY_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -12,7 +13,8 @@ const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Content-Security-Policy":
-    "default-src 'none'; style-src 'self' https://fonts.googleapis.com; " +
+    "default-src 'none'; script-src 'self'; connect-src 'self'; " +
+    "style-src 'self' https://fonts.googleapis.com; " +
     // Product photos are shown straight from the shops' servers.
     "font-src https://fonts.gstatic.com; img-src 'self' data: https:; " +
     "form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
@@ -33,7 +35,7 @@ export function page(ctx: Ctx, title: string, body: Html, status = 200): Respons
 </head>
 <body>
 <div class="snow" aria-hidden="true"></div>
-<header class="site"><a href="/">🎅 ${t.siteTitle} 🎄</a>${languageSwitcher(ctx)}</header>
+<header class="site"><a href="/">🎅 ${t.siteTitle} 🎄</a><div class="switchers">${languageSwitcher(ctx)}${currencySwitcher(ctx)}</div></header>
 <main>
 ${body}
 </main>

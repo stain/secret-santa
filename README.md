@@ -5,7 +5,8 @@ A small Secret Santa web app running on Cloudflare Workers with a D1 (SQLite) da
 - An admin creates one or more **groups** and adds people (name and email) to each.
 - **Drawing names** shuffles a group into one circle: A gives to B, B gives to C, and the last person gives to A.
 - Each person gets a **private link**, `/p/<uuid>?key=<secret>`. The secret key means nobody can open someone else's page by changing the UUID. The admin page has a `mailto:` link for each person, with the message already written, so you can email them their link.
-- On their page, people see whom they give to and that person's wish, write their own wish, and see everyone's wishes. They never see who gives to them.
+- On their page, people see whom they give to and that person's wishes, write up to 3 wish ideas of their own (each with an optional link, for example to a shop), and see everyone's wishes. They never see who gives to them.
+- The pages are in English, Spanish and Norwegian (Bokmål). The language follows the browser's preferences, and the flag links in the header switch it (remembered in a `lang` cookie).
 
 The pages are rendered on the server and use plain HTML forms, with no client-side JavaScript.
 
@@ -18,7 +19,9 @@ The pages are rendered on the server and use plain HTML forms, with no client-si
 | `src/participant.ts` | Private participant page (`/p/<uuid>?key=…`) |
 | `src/db.ts` | All D1 queries, including the draw |
 | `src/security.ts` | Key generation, constant-time checks, shuffle, admin auth |
-| `src/html.ts` | Escaping HTML template helper and page layout |
+| `src/html.ts` | Escaping HTML template helper |
+| `src/layout.ts` | Page layout and security headers |
+| `src/i18n.ts` | Translations and language selection |
 | `public/style.css` | Festive styling (static asset) |
 | `migrations/` | D1 schema migrations |
 

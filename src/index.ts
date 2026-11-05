@@ -1,26 +1,31 @@
 // Worker entry point. Static files in public/ are served before this runs.
 
 import { handleAdmin } from "./admin";
-import { errorPage, html, page } from "./html";
+import { html } from "./html";
+import { resolveContext, switchLanguage } from "./i18n";
+import { errorPage, page } from "./layout";
 import { handleParticipant } from "./participant";
 
 export default {
   async fetch(request, env): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname.split("/").filter(Boolean);
+    const ctx = resolveContext(request);
+    const { t } = ctx;
+    const path = ctx.url.pathname.split("/").filter(Boolean);
 
     if (path.length === 0) {
       return page(
-        "Welcome",
+        ctx,
+        t.welcomeTitle,
         html`<section class="card welcome">
-  <h1>Ho ho ho!</h1>
-  <p>Your organiser will email you a private link to your Secret Santa page.</p>
-  <p class="muted">Lost it? Ask them to send it again.</p>
+  <h1>${t.welcomeHeading}</h1>
+  <p>${t.welcomeText}</p>
+  <p class="muted">${t.welcomeLost}</p>
 </section>`,
       );
     }
-    if (path[0] === "p" && path.length === 2) return handleParticipant(request, env, path[1]);
-    if (path[0] === "admin") return handleAdmin(request, env, path.slice(1));
-    return errorPage(404, "Page not found.");
+    if (path[0] === "lang" && path.length === 2) return switchLanguage(ctx.url, path[1]);
+    if (path[0] === "p" && path.length === 2) return handleParticipant(ctx, request, env, path[1]);
+    if (path[0] === "admin") return handleAdmin(ctx, request, env, path.slice(1));
+    return errorPage(ctx, 404, t.notFound);
   },
 } satisfies ExportedHandler<Env>;

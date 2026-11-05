@@ -15,11 +15,17 @@ export interface Participant {
   name: string;
   email: string;
   access_key: string;
-  wish: string;
   giftee_id: string | null;
 }
 
+export interface Wish {
+  position: number;
+  text: string;
+  url: string;
+}
+
 export const MIN_PARTICIPANTS = 3;
+export const MAX_WISHES = 3;
 
 export async function listChains(db: D1Database) {
   const { results } = await db
@@ -114,6 +120,33 @@ export async function drawChain(db: D1Database, chainId: string): Promise<void> 
   ]);
 }
 
-export async function setWish(db: D1Database, id: string, wish: string): Promise<void> {
-  await db.prepare("UPDATE participants SET wish = ? WHERE id = ?").bind(wish, id).run();
+/** Everyone's wish ideas in a chain, keyed by participant id, in position order. */
+export async function listWishes(db: D1Database, chainId: string): Promise<Map<string, Wish[]>> {
+  const { results } = await db
+    .prepare(
+      `SELECT w.participant_id, w.position, w.text, w.url
+         FROM wishes w JOIN participants p ON p.id = w.participant_id
+        WHERE p.chain_id = ? ORDER BY w.position`,
+    )
+    .bind(chainId)
+    .all<Wish & { participant_id: string }>();
+  const byPerson = new Map<string, Wish[]>();
+  for (const { participant_id, ...wish } of results) {
+    byPerson.set(participant_id, [...(byPerson.get(participant_id) ?? []), wish]);
+  }
+  return byPerson;
+}
+
+/** Replaces a participant's wish ideas; positions are renumbered from 1. */
+export async function setWishes(db: D1Database, id: string, wishes: Omit<Wish, "position">[]): Promise<void> {
+  await db.batch([
+    db.prepare("DELETE FROM wishes WHERE participant_id = ?").bind(id),
+    ...wishes
+      .slice(0, MAX_WISHES)
+      .map((w, i) =>
+        db
+          .prepare("INSERT INTO wishes (participant_id, position, text, url) VALUES (?, ?, ?, ?)")
+          .bind(id, i + 1, w.text, w.url),
+      ),
+  ]);
 }

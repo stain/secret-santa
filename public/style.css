@@ -63,7 +63,7 @@ header.site {
   border-image: repeating-linear-gradient(45deg, var(--red-dark) 0 12px, #fff 12px 24px) 6;
   box-shadow: 0 4px 12px #0006;
 }
-header.site a {
+header.site > a {
   color: #fff;
   font: 700 2.2rem var(--font-festive);
   text-decoration: none;
@@ -184,6 +184,48 @@ ul.wishes li::before, ul.chains li::before { content: "🎄"; position: absolute
 ul.wishes .who { font-weight: 700; display: block; }
 ul.wishes .what { white-space: pre-wrap; }
 ul.chains .muted { margin-left: 0.5rem; font-size: 0.9rem; }
+
+/* Wish ideas */
+ol.ideas { margin: 0.2rem 0 0; padding-left: 1.4rem; }
+ol.ideas li { margin: 0.2rem 0; overflow-wrap: anywhere; }
+.wishbox {
+  margin: 0 auto;
+  max-width: 34rem;
+  padding: 0.75rem 1rem;
+  background: #fdf3d7;
+  border-left: 5px solid var(--gold);
+  border-radius: 6px;
+  text-align: left;
+}
+a.shop {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: #e3f4ea;
+  text-decoration: none;
+}
+a.shop:hover { background: #c9ead6; }
+fieldset.idea {
+  border: 2px dashed #e4d6bf;
+  border-radius: 10px;
+  margin: 0 0 0.8rem;
+  padding: 0.3rem 0.9rem 0.8rem;
+}
+fieldset.idea legend { font-family: var(--font-festive); font-size: 1.3rem; color: var(--green); padding: 0 0.3rem; }
+
+/* Language switcher */
+nav.lang { display: flex; justify-content: center; gap: 0.4rem; margin-top: 0.4rem; flex-wrap: wrap; }
+nav.lang a {
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #fff6;
+}
+nav.lang a:hover { background: #fff3; }
+nav.lang a[aria-current] { background: #fff; color: var(--red); font-weight: 700; }
 
 a { color: var(--green); }
 code { background: #f3ead9; padding: 0 0.3em; border-radius: 4px; }

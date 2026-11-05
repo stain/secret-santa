@@ -167,14 +167,21 @@ export async function removeParticipant(db: D1Database, chainId: string, id: str
 
 /**
  * Shuffles the chain into one circle: each person gives to the next one,
- * and the last gives to the first, so nobody draws themselves.
+ * and the last gives to the first, so nobody draws themselves. A redraw
+ * always gives a different circle (with 3 people there are only two).
+ * Private links are not touched, so nobody needs a new one.
  */
 export async function drawChain(db: D1Database, chainId: string): Promise<void> {
-  const ids = (await listParticipants(db, chainId)).map((p) => p.id);
-  if (ids.length < MIN_PARTICIPANTS) {
+  const people = await listParticipants(db, chainId);
+  if (people.length < MIN_PARTICIPANTS) {
     throw new Error(`A draw needs at least ${MIN_PARTICIPANTS} people.`);
   }
-  const circle = shuffle(ids);
+  const current = new Map(people.map((p) => [p.id, p.giftee_id]));
+  const ids = people.map((p) => p.id);
+  const unchanged = (c: string[]) => c.every((id, i) => current.get(id) === c[(i + 1) % c.length]);
+  // Each try repeats the current circle with a chance of at most 1 in 2.
+  let circle = shuffle(ids);
+  for (let tries = 0; tries < 50 && unchanged(circle); tries++) circle = shuffle(ids);
   await db.batch([
     ...circle.map((id, i) =>
       db

@@ -1,5 +1,6 @@
 // Currencies, exchange rates and price formatting.
 
+import type { Database } from "./sqlite";
 import { backParam, readCookie, rememberChoice } from "./cookies";
 import { html, type Html } from "./html";
 import { LOCALES, type Ctx, type Lang } from "./i18n";
@@ -39,7 +40,7 @@ export function switchCurrency(url: URL, code: string): Response {
 }
 
 /** Today's rates from D1, refreshed from the ECB once a day; stale rates beat none. */
-export async function getRates(db: D1Database): Promise<Rates> {
+export async function getRates(db: Database): Promise<Rates> {
   const { results } = await db
     .prepare("SELECT currency, per_eur, fetched_at FROM rates")
     .all<{ currency: string; per_eur: number; fetched_at: string }>();

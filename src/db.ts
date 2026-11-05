@@ -1,5 +1,6 @@
 // All D1 access lives here so the SQL stays in one place.
 
+import type { Database, Statement } from "./sqlite";
 import { newAccessKey, shuffle } from "./security";
 
 export interface Chain {
@@ -42,13 +43,13 @@ export interface Settings {
 export const MIN_PARTICIPANTS = 3;
 export const MAX_WISHES = 3;
 
-export async function getSettings(db: D1Database): Promise<Settings> {
+export async function getSettings(db: Database): Promise<Settings> {
   const { results } = await db.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>();
   const get = (key: string) => results.find((r) => r.key === key)?.value ?? "";
   return { controllerName: get("controller_name"), controllerContact: get("controller_contact") };
 }
 
-export async function setSettings(db: D1Database, s: Settings): Promise<void> {
+export async function setSettings(db: Database, s: Settings): Promise<void> {
   const upsert = "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value";
   await db.batch([
     db.prepare(upsert).bind("controller_name", s.controllerName),
@@ -56,7 +57,7 @@ export async function setSettings(db: D1Database, s: Settings): Promise<void> {
   ]);
 }
 
-export async function listChains(db: D1Database) {
+export async function listChains(db: Database) {
   const { results } = await db
     .prepare(
       `SELECT c.*, COUNT(p.id) AS participant_count
@@ -67,7 +68,7 @@ export async function listChains(db: D1Database) {
   return results;
 }
 
-export function getChain(db: D1Database, id: string) {
+export function getChain(db: Database, id: string) {
   return db.prepare("SELECT * FROM chains WHERE id = ?").bind(id).first<Chain>();
 }
 
@@ -77,7 +78,7 @@ export function defaultEndDate(now = new Date()): string {
   return `${year}-01-31`;
 }
 
-export async function createChain(db: D1Database, name: string, currency: string): Promise<string> {
+export async function createChain(db: Database, name: string, currency: string): Promise<string> {
   const id = crypto.randomUUID();
   await db
     .prepare("INSERT INTO chains (id, name, currency, ends_on) VALUES (?, ?, ?, ?)")
@@ -86,7 +87,7 @@ export async function createChain(db: D1Database, name: string, currency: string
   return id;
 }
 
-export async function setPrivacy(db: D1Database, id: string, organiser: string, endsOn: string): Promise<void> {
+export async function setPrivacy(db: Database, id: string, organiser: string, endsOn: string): Promise<void> {
   await db.prepare("UPDATE chains SET organiser = ?, ends_on = ? WHERE id = ?").bind(organiser, endsOn, id).run();
 }
 
@@ -95,7 +96,7 @@ export async function setPrivacy(db: D1Database, id: string, organiser: string, 
  * (by cascade) their wishes and lookup records, plus product lookups and
  * rate-limit records older than a day. Run daily by the cron trigger.
  */
-export async function purgeExpired(db: D1Database, now = new Date()): Promise<number> {
+export async function purgeExpired(db: Database, now = new Date()): Promise<number> {
   const today = now.toISOString().slice(0, 10);
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const expired = "SELECT id FROM chains WHERE ends_on IS NOT NULL AND ends_on < ?";
@@ -109,11 +110,11 @@ export async function purgeExpired(db: D1Database, now = new Date()): Promise<nu
   return results[2].meta.changes ?? 0;
 }
 
-export async function setBudget(db: D1Database, id: string, limit: number | null, currency: string): Promise<void> {
+export async function setBudget(db: Database, id: string, limit: number | null, currency: string): Promise<void> {
   await db.prepare("UPDATE chains SET price_limit = ?, currency = ? WHERE id = ?").bind(limit, currency, id).run();
 }
 
-export async function deleteChain(db: D1Database, id: string): Promise<void> {
+export async function deleteChain(db: Database, id: string): Promise<void> {
   await db.batch([
     db.prepare("UPDATE participants SET giftee_id = NULL WHERE chain_id = ?").bind(id),
     db.prepare("DELETE FROM participants WHERE chain_id = ?").bind(id),
@@ -121,7 +122,7 @@ export async function deleteChain(db: D1Database, id: string): Promise<void> {
   ]);
 }
 
-export async function listParticipants(db: D1Database, chainId: string) {
+export async function listParticipants(db: Database, chainId: string) {
   const { results } = await db
     .prepare("SELECT * FROM participants WHERE chain_id = ? ORDER BY name COLLATE NOCASE")
     .bind(chainId)
@@ -129,11 +130,11 @@ export async function listParticipants(db: D1Database, chainId: string) {
   return results;
 }
 
-export function getParticipant(db: D1Database, id: string) {
+export function getParticipant(db: Database, id: string) {
   return db.prepare("SELECT * FROM participants WHERE id = ?").bind(id).first<Participant>();
 }
 
-function clearDraw(db: D1Database, chainId: string): D1PreparedStatement[] {
+function clearDraw(db: Database, chainId: string): Statement[] {
   return [
     db.prepare("UPDATE participants SET giftee_id = NULL WHERE chain_id = ?").bind(chainId),
     db.prepare("UPDATE chains SET drawn_at = NULL WHERE id = ?").bind(chainId),
@@ -142,7 +143,7 @@ function clearDraw(db: D1Database, chainId: string): D1PreparedStatement[] {
 
 /** Adds people, skipping emails already in the chain. Any existing draw is cleared. */
 export async function addParticipants(
-  db: D1Database,
+  db: Database,
   chainId: string,
   people: { name: string; email: string }[],
 ): Promise<number> {
@@ -160,7 +161,7 @@ export async function addParticipants(
 
 /** Corrects a participant's name or email (GDPR rectification); the draw is kept. */
 export async function updateParticipant(
-  db: D1Database,
+  db: Database,
   chainId: string,
   id: string,
   name: string,
@@ -178,7 +179,7 @@ export async function updateParticipant(
   return true;
 }
 
-export async function removeParticipant(db: D1Database, chainId: string, id: string): Promise<void> {
+export async function removeParticipant(db: Database, chainId: string, id: string): Promise<void> {
   await db.batch([
     ...clearDraw(db, chainId),
     db.prepare("DELETE FROM participants WHERE id = ? AND chain_id = ?").bind(id, chainId),
@@ -191,7 +192,7 @@ export async function removeParticipant(db: D1Database, chainId: string, id: str
  * always gives a different circle (with 3 people there are only two).
  * Private links are not touched, so nobody needs a new one.
  */
-export async function drawChain(db: D1Database, chainId: string): Promise<void> {
+export async function drawChain(db: Database, chainId: string): Promise<void> {
   const people = await listParticipants(db, chainId);
   if (people.length < MIN_PARTICIPANTS) {
     throw new Error(`A draw needs at least ${MIN_PARTICIPANTS} people.`);
@@ -213,7 +214,7 @@ export async function drawChain(db: D1Database, chainId: string): Promise<void> 
 }
 
 /** Everyone's wish ideas in a chain, keyed by participant id, in position order. */
-export async function listWishes(db: D1Database, chainId: string): Promise<Map<string, Wish[]>> {
+export async function listWishes(db: Database, chainId: string): Promise<Map<string, Wish[]>> {
   const { results } = await db
     .prepare(
       `SELECT w.participant_id, w.position, w.text, w.url, w.title, w.image, w.price, w.currency
@@ -229,7 +230,7 @@ export async function listWishes(db: D1Database, chainId: string): Promise<Map<s
   return byPerson;
 }
 
-export async function getWishes(db: D1Database, participantId: string): Promise<Wish[]> {
+export async function getWishes(db: Database, participantId: string): Promise<Wish[]> {
   const { results } = await db
     .prepare("SELECT position, text, url, title, image, price, currency FROM wishes WHERE participant_id = ? ORDER BY position")
     .bind(participantId)
@@ -239,14 +240,14 @@ export async function getWishes(db: D1Database, participantId: string): Promise<
 
 /** Replaces a participant's wish ideas; positions are renumbered from 1. */
 /** Removes all of a participant's wishes (admin moderation). */
-export async function clearWishes(db: D1Database, chainId: string, id: string): Promise<void> {
+export async function clearWishes(db: Database, chainId: string, id: string): Promise<void> {
   await db
     .prepare("DELETE FROM wishes WHERE participant_id = (SELECT id FROM participants WHERE id = ? AND chain_id = ?)")
     .bind(id, chainId)
     .run();
 }
 
-export async function setWishes(db: D1Database, id: string, wishes: Omit<Wish, "position">[]): Promise<void> {
+export async function setWishes(db: Database, id: string, wishes: Omit<Wish, "position">[]): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM wishes WHERE participant_id = ?").bind(id),
     ...wishes

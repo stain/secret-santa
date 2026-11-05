@@ -1,5 +1,6 @@
 // Admin pages under /admin, protected by Basic auth (see security.ts).
 
+import type { Env } from "./env";
 import {
   MAX_WISHES,
   MIN_PARTICIPANTS,

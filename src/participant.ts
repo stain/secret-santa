@@ -2,6 +2,7 @@
 // its product lookup for the wish form: /p/<uuid>/preview?key=<secret>&url=<link>
 // and their data as JSON (GDPR access and portability): /p/<uuid>/data?key=<secret>
 
+import type { Env } from "./env";
 import {
   MAX_WISHES,
   getChain,

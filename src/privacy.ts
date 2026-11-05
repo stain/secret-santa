@@ -3,6 +3,7 @@
 // processes it, where it is kept or how long, update all three versions.
 // The data controller's name and contact are set on the admin home page.
 
+import type { Env } from "./env";
 import { getSettings, type Settings } from "./db";
 import { html, type Html } from "./html";
 import type { Ctx, Lang } from "./i18n";
@@ -33,8 +34,28 @@ ${named
   }
 }
 
-const REST: Record<Lang, Html> = {
-  en: html`<h2>What is stored</h2>
+/** Who runs the server, from HOSTING_PROVIDER and HOSTING_LOCATION. */
+function hosting(lang: Lang, env: Env): Html {
+  const p = env.HOSTING_PROVIDER;
+  const l = env.HOSTING_LOCATION;
+  switch (lang) {
+    case "en":
+      return p
+        ? html`<li><strong>${p}</strong> provides the server the app and its database run on${l && `, in ${l}`}, on the data controller's behalf, under a data processing agreement.</li>`
+        : html`<li>The app and its database run on a rented server, on the data controller's behalf.</li>`;
+    case "es":
+      return p
+        ? html`<li><strong>${p}</strong> proporciona el servidor en el que funcionan la aplicación y su base de datos${l && `, en ${l}`}, por cuenta del responsable del tratamiento y con un acuerdo de tratamiento de datos.</li>`
+        : html`<li>La aplicación y su base de datos funcionan en un servidor alquilado, por cuenta del responsable del tratamiento.</li>`;
+    case "nb":
+      return p
+        ? html`<li><strong>${p}</strong> leverer serveren som appen og databasen kjører på${l && `, i ${l}`}, på vegne av behandlingsansvarlig og under en databehandleravtale.</li>`
+        : html`<li>Appen og databasen kjører på en leid server på vegne av behandlingsansvarlig.</li>`;
+  }
+}
+
+const REST: Record<Lang, (host: Html) => Html> = {
+  en: (host) => html`<h2>What is stored</h2>
 <ul>
   <li>Your name and email address, entered by the data controller.</li>
   <li>The wish ideas you write, including any links, and the product name, photo address and price looked up from those links.</li>
@@ -55,14 +76,15 @@ const REST: Record<Lang, Html> = {
 
 <h2>Who else handles it</h2>
 <ul>
-  <li><strong>Cloudflare</strong> runs the app and its database on the data controller's behalf, under Cloudflare's data processing terms. The database is kept in the European Union.</li>
+  ${host}
+  <li>To keep links family-friendly, the names of linked websites (not the full links) are checked with Cloudflare's "1.1.1.1 for Families" service.</li>
   <li>The data controller emails you your private link from their own email account, so their email provider also has your address and a copy of that message. The app itself sends no email.</li>
   <li>Product links you enter are fetched by the app's server, not your browser, and product photos are passed on by the server, so shops never see your visit.</li>
   <li>Exchange rates come from the European Central Bank (via frankfurter.dev); no personal data is sent.</li>
 </ul>
 
 <h2>How long it is kept</h2>
-<p>All data for a group is deleted automatically the day after the group's end date, which is shown on your page (by default 31 January). Cloudflare's database backups can keep deleted data for up to 30 more days. Product lookups are kept for one day.</p>
+<p>All data for a group is deleted automatically the day after the group's end date, which is shown on your page (by default 31 January). Backup copies of the database are kept for 7 days, so deleted data can remain in them for up to 7 more days. Product lookups are kept for one day.</p>
 
 <h2>Cookies</h2>
 <p>The app only sets a cookie when you choose a language or currency, to remember your choice. There are no other cookies.</p>
@@ -76,7 +98,7 @@ const REST: Record<Lang, Html> = {
   <li>Complain to a data protection authority, such as the ICO (UK), the AEPD (Spain) or Datatilsynet (Norway).</li>
 </ul>`,
 
-  es: html`<h2>Qué se guarda</h2>
+  es: (host) => html`<h2>Qué se guarda</h2>
 <ul>
   <li>Tu nombre y tu dirección de correo, introducidos por el responsable del tratamiento.</li>
   <li>Las ideas de regalo que escribes, con sus enlaces, y el nombre, la dirección de la foto y el precio del producto obtenidos de esos enlaces.</li>
@@ -97,14 +119,15 @@ const REST: Record<Lang, Html> = {
 
 <h2>Quién más los trata</h2>
 <ul>
-  <li><strong>Cloudflare</strong> ejecuta la aplicación y su base de datos por cuenta del responsable del tratamiento, según las condiciones de tratamiento de datos de Cloudflare. La base de datos se guarda en la Unión Europea.</li>
+  ${host}
+  <li>Para que los enlaces sean aptos para toda la familia, el nombre de los sitios enlazados (no el enlace completo) se comprueba con el servicio «1.1.1.1 for Families» de Cloudflare.</li>
   <li>El responsable del tratamiento te envía tu enlace privado desde su propia cuenta de correo, así que su proveedor de correo también tiene tu dirección y una copia de ese mensaje. La aplicación no envía correos.</li>
   <li>Los enlaces de productos que escribes los consulta el servidor de la aplicación, no tu navegador, y las fotos de los productos también pasan por el servidor, así que las tiendas nunca ven tu visita.</li>
   <li>Los tipos de cambio vienen del Banco Central Europeo (a través de frankfurter.dev); no se envía ningún dato personal.</li>
 </ul>
 
 <h2>Cuánto tiempo se guardan</h2>
-<p>Todos los datos de un grupo se borran automáticamente el día después de su fecha de fin, que aparece en tu página (por defecto, el 31 de enero). Las copias de seguridad de la base de datos de Cloudflare pueden conservar los datos borrados hasta 30 días más. Las búsquedas de productos se guardan un día.</p>
+<p>Todos los datos de un grupo se borran automáticamente el día después de su fecha de fin, que aparece en tu página (por defecto, el 31 de enero). Las copias de seguridad de la base de datos se guardan 7 días, así que los datos borrados pueden permanecer en ellas hasta 7 días más. Las búsquedas de productos se guardan un día.</p>
 
 <h2>Cookies</h2>
 <p>La aplicación solo guarda una cookie cuando eliges un idioma o una moneda, para recordar tu elección. No hay más cookies.</p>
@@ -118,7 +141,7 @@ const REST: Record<Lang, Html> = {
   <li>Presentar una reclamación ante una autoridad de protección de datos, como la AEPD (España), el ICO (Reino Unido) o Datatilsynet (Noruega).</li>
 </ul>`,
 
-  nb: html`<h2>Hva som lagres</h2>
+  nb: (host) => html`<h2>Hva som lagres</h2>
 <ul>
   <li>Navnet og e-postadressen din, lagt inn av behandlingsansvarlig.</li>
   <li>Ønskene du skriver, med eventuelle lenker, og produktnavn, bildeadresse og pris hentet fra disse lenkene.</li>
@@ -139,14 +162,15 @@ const REST: Record<Lang, Html> = {
 
 <h2>Hvem andre som behandler dem</h2>
 <ul>
-  <li><strong>Cloudflare</strong> driver appen og databasen på vegne av behandlingsansvarlig, etter Cloudflares vilkår for databehandling. Databasen lagres i EU.</li>
+  ${host}
+  <li>For at lenker skal være familievennlige, sjekkes navnet på nettstedene det lenkes til (ikke hele lenken) med Cloudflares tjeneste «1.1.1.1 for Families».</li>
   <li>Behandlingsansvarlig sender deg den private lenken fra sin egen e-postkonto, så e-postleverandøren deres har også adressen din og en kopi av meldingen. Appen sender ingen e-post selv.</li>
   <li>Produktlenker du legger inn, hentes av appens server, ikke nettleseren din, og produktbilder sendes videre av serveren, så butikkene ser aldri besøket ditt.</li>
   <li>Valutakurser hentes fra Den europeiske sentralbanken (via frankfurter.dev); ingen personopplysninger sendes.</li>
 </ul>
 
 <h2>Hvor lenge de lagres</h2>
-<p>Alle data for en gruppe slettes automatisk dagen etter gruppens sluttdato, som står på siden din (som standard 31. januar). Cloudflares sikkerhetskopier av databasen kan beholde slettede data i opptil 30 dager til. Produktoppslag lagres i ett døgn.</p>
+<p>Alle data for en gruppe slettes automatisk dagen etter gruppens sluttdato, som står på siden din (som standard 31. januar). Sikkerhetskopier av databasen beholdes i 7 dager, så slettede data kan ligge i dem i opptil 7 dager til. Produktoppslag lagres i ett døgn.</p>
 
 <h2>Informasjonskapsler</h2>
 <p>Appen setter bare en informasjonskapsel når du velger språk eller valuta, for å huske valget ditt. Det finnes ingen andre informasjonskapsler.</p>
@@ -167,6 +191,6 @@ export async function privacyPage(ctx: Ctx, env: Env): Promise<Response> {
     ctx,
     ctx.t.privacyTitle,
     html`<h1>${ctx.t.privacyTitle}</h1>
-<section class="card notice-text">${whoIsResponsible(ctx.lang, settings)}${REST[ctx.lang]}</section>`,
+<section class="card notice-text">${whoIsResponsible(ctx.lang, settings)}${REST[ctx.lang](hosting(ctx.lang, env))}</section>`,
   );
 }

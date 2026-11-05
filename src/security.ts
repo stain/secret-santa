@@ -1,5 +1,8 @@
 // Secrets, constant-time comparison, admin auth and randomness.
 
+import { timingSafeEqual } from "node:crypto";
+import type { Env } from "./env";
+
 const encoder = new TextEncoder();
 
 /** Compare two strings without leaking where they differ through timing. */
@@ -9,7 +12,7 @@ export async function safeEqual(a: string, b: string): Promise<boolean> {
     crypto.subtle.digest("SHA-256", encoder.encode(a)),
     crypto.subtle.digest("SHA-256", encoder.encode(b)),
   ]);
-  return crypto.subtle.timingSafeEqual(ha, hb);
+  return timingSafeEqual(new Uint8Array(ha), new Uint8Array(hb));
 }
 
 /** A random URL-safe secret, used as a participant's ?key=. */

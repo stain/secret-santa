@@ -3,6 +3,9 @@
 // and Twitter meta tags, microdata, Amazon's product markup (which has none
 // of those), then the page's <title> and <link rel="image_src">.
 
+import type { Database } from "./sqlite";
+import { HtmlScanner } from "./html-scan";
+import { publicFetch } from "./net";
 import { isFamilyFriendly } from "./safety";
 
 export interface Preview {
@@ -22,12 +25,12 @@ const TIMEOUT_MS = 6000;
 const MAX_TITLE_LENGTH = 300;
 
 /**
- * Refuse hosts that point back into a private network (relevant when running
- * locally; on Cloudflare a Worker can't reach private addresses anyway).
- * Shops don't live at bare IP addresses, so all IP literals are refused.
+ * A quick first check on the name: refuse local-looking hosts and IP
+ * literals (shops don't live at bare IP addresses). The real protection is in
+ * net.ts, which checks the addresses DNS returns when connecting.
  */
 function isPublicHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
+  const host = hostname.toLowerCase().replace(/\.$/, "");
   return !(
     host.startsWith("[") ||
     /^[\d.]+$/.test(host) ||
@@ -51,7 +54,7 @@ export async function fetchPublic(
     if (!/^https?:$/.test(target.protocol) || !isPublicHost(target.hostname)) return null;
     // Also on every redirect, so a harmless-looking link can't lead to a blocked site.
     if (!(await isFamilyFriendly(target.hostname))) return null;
-    const res = await fetch(target, {
+    const res = await publicFetch(target, {
       redirect: "manual",
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: {
@@ -77,7 +80,7 @@ export async function fetchPublic(
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
-/** HTMLRewriter hands over attribute values and text with entities still encoded. */
+/** The scanner (html-scan.ts) hands over attribute values and text with entities still encoded. */
 function decodeEntities(text: string): string {
   return text.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
     if (e[0] === "#") {
@@ -227,7 +230,7 @@ export async function extractPreview(res: Response, base: string): Promise<Previ
   let itemPrice = "";
   let itemCurrency = "";
 
-  const rewriter = new HTMLRewriter()
+  const scanner = new HtmlScanner()
     .on('script[type="application/ld+json"]', {
       element: () => void jsonLd.push(""),
       text: (t) => void (jsonLd[jsonLd.length - 1] += t.text),
@@ -293,18 +296,8 @@ export async function extractPreview(res: Response, base: string): Promise<Previ
       text: (t) => void (titles === 1 && (pageTitle += t.text)),
     });
 
-  // Read through the rewritten page, giving up on very large ones.
-  const reader = rewriter.transform(res).body!.getReader();
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_BYTES) {
-      await reader.cancel();
-      break;
-    }
-  }
+  // Read through the page, giving up on very large ones.
+  await scanner.scan(res.body!, MAX_BYTES);
 
   if (robotCheck) return EMPTY;
 
@@ -355,7 +348,10 @@ export async function extractPreview(res: Response, base: string): Promise<Previ
  * when the participant has used up their lookups for the hour. Each lookup
  * also deletes cache and rate-limit rows older than a day, so neither grows.
  */
-export async function cachedPreview(db: D1Database, url: string, participantId: string): Promise<Preview | null> {
+export async function cachedPreview(db: Database, url: string, participantId: string): Promise<Preview | null> {
+  // Same rules as fetching, so nothing cached from a disallowed address is served.
+  const target = new URL(url);
+  if (!isPublicHost(target.hostname) || (target.port !== "" && target.port !== "80" && target.port !== "443")) return EMPTY;
   const hit = await db
     .prepare("SELECT title, image, price, currency, fetched_at FROM previews WHERE url = ?")
     .bind(url)

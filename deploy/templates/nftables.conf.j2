@@ -1,0 +1,19 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (deploy/site.yml). Incoming: only SSH, HTTP and HTTPS.
+# Only this table is replaced on reload (no "flush ruleset"), so Podman's own
+# rules for container networking are left alone.
+
+table inet santa
+delete table inet santa
+
+table inet santa {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iif "lo" accept
+		meta l4proto { icmp, ipv6-icmp } accept
+		tcp dport { {{ santa_ssh_port }}, 80, 443 } accept
+		udp dport 443 accept
+	}
+}

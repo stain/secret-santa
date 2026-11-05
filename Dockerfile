@@ -1,6 +1,8 @@
-# Secret Santa: Node.js app with SQLite. Built and run by compose.yaml.
+# Secret Santa: Node.js app with SQLite. Built with `podman build` and run as a
+# systemd service through Podman Quadlet (deploy/templates/secret-santa.container.j2).
+# Rebuilding with --pull picks up the latest Node.js 24 LTS patch release.
 
-FROM docker.io/library/node:22-slim AS build
+FROM docker.io/library/node:24-slim AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -8,13 +10,12 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run typecheck && npm run build
 
-FROM docker.io/library/node:22-slim
+FROM docker.io/library/node:24-slim
 ENV NODE_ENV=production PORT=8787 DATA_DIR=/data
 WORKDIR /app
 COPY --from=build /src/dist ./dist
 COPY public ./public
 COPY migrations ./migrations
-# The data volume takes this directory's owner when it is first created.
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 8787

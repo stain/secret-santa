@@ -1,0 +1,285 @@
+# Sets up, or updates, a Debian 13 server for Secret Santa:
+#   Debian packages (Podman, Caddy, nftables) with automatic security updates,
+#   SSH keys only, a firewall, and the app as a Podman Quadlet container.
+# First build the image (anywhere with Podman or Docker):
+#   deploy/build-image.sh
+# then run from this directory, against the hosts in inventory.ini:
+#   ansible-playbook site.yml
+# It is safe to run again: that is also how to update. The image is uploaded
+# only when it has changed. Uses only ansible.builtin modules.
+
+- name: Secret Santa server
+  hosts: santa
+  become: true
+
+  vars:
+    santa_public_url: "https://{{ santa_domain }}"
+    santa_image_archive: "{{ playbook_dir }}/../dist/secret-santa-image.tar.gz"
+    santa_image_id_file: "{{ playbook_dir }}/../dist/secret-santa-image.id"
+    santa_hosting_provider: ""
+    santa_hosting_location: ""
+    santa_backup_days: 7
+    santa_ssh_port: 22
+    santa_swap_size: 1G
+    santa_tls_internal: false # true for test VMs without a public name (Vagrant)
+    santa_disable_ssh_passwords: true
+    santa_image: localhost/secret-santa:latest
+
+  pre_tasks:
+    - name: Check this is Debian 13 and a domain is set
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Debian"
+          - ansible_distribution_major_version == "13"
+          - santa_domain is defined and santa_domain | length > 0
+        fail_msg: "Needs Debian 13 (trixie) and santa_domain set in the inventory."
+
+    - name: Check the image has been built (deploy/build-image.sh)
+      ansible.builtin.stat:
+        path: "{{ santa_image_archive }}"
+      delegate_to: localhost
+      become: false
+      register: local_image
+      failed_when: not local_image.stat.exists
+
+  tasks:
+    # --- Packages and automatic updates ---
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name: [podman, caddy, nftables, unattended-upgrades, apt-listchanges, needrestart, sqlite3]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Upgrade installed packages
+      ansible.builtin.apt:
+        upgrade: safe
+
+    - name: Turn on daily automatic updates
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"
+
+    - name: Reboot at 04:30 UTC when an update needs it
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/52secret-santa
+        content: |
+          Unattended-Upgrade::Automatic-Reboot "true";
+          Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+        mode: "0644"
+
+    - name: Restart services automatically after library updates
+      ansible.builtin.copy:
+        dest: /etc/needrestart/conf.d/50-secret-santa.conf
+        content: "$nrconf{restart} = 'a';\n"
+        mode: "0644"
+
+    - name: Configuration directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: [/etc/systemd/journald.conf.d, /etc/needrestart/conf.d, /etc/containers/systemd]
+
+    - name: Keep the journal small
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/50-secret-santa.conf
+        content: |
+          [Journal]
+          SystemMaxUse=200M
+        mode: "0644"
+      notify: Restart journald
+
+    # --- A little swap as a safety margin on 1 GB servers ---
+
+    - name: Swap file
+      ansible.builtin.shell: >-
+        fallocate -l {{ santa_swap_size }} /swapfile.new && chmod 600 /swapfile.new &&
+        mkswap /swapfile.new && mv /swapfile.new /swapfile
+      args:
+        creates: /swapfile
+
+    - name: Swap on at boot
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+
+    - name: Swap on now
+      ansible.builtin.command: swapon --all
+      changed_when: false
+
+    # --- SSH and firewall ---
+
+    - name: Check root can log in with an SSH key before turning passwords off
+      ansible.builtin.stat:
+        path: /root/.ssh/authorized_keys
+      register: root_keys
+
+    - name: SSH keys only
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/90-secret-santa.conf
+        content: |
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin prohibit-password
+        mode: "0644"
+        validate: /usr/sbin/sshd -t -f %s
+      when: santa_disable_ssh_passwords and root_keys.stat.exists and root_keys.stat.size > 0
+      notify: Reload ssh
+
+    - name: Firewall rules
+      ansible.builtin.template:
+        src: nftables.conf.j2
+        dest: /etc/nftables.conf
+        mode: "0755"
+        validate: /usr/sbin/nft -c -f %s
+      notify: Reload nftables
+
+    - name: Firewall on at boot
+      ansible.builtin.systemd_service:
+        name: nftables
+        enabled: true
+        state: started
+
+    # --- The app ---
+
+    - name: Image ID on the server
+      ansible.builtin.command: podman image inspect --format "{{ '{{' }}.Id{{ '}}' }}" {{ santa_image }}
+      register: server_image
+      changed_when: false
+      failed_when: false
+
+    - name: Upload the image if it has changed
+      ansible.builtin.copy:
+        src: "{{ santa_image_archive }}"
+        dest: /var/tmp/secret-santa-image.tar.gz
+        mode: "0600"
+      when: server_image.stdout != lookup('ansible.builtin.file', santa_image_id_file)
+      notify: [Load the uploaded image, Remove the uploaded image file, Restart app]
+
+    - name: Data directory (owned by the container's node user)
+      ansible.builtin.file:
+        path: /var/lib/secret-santa
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: "0700"
+
+    - name: Settings directory
+      ansible.builtin.file:
+        path: /etc/secret-santa
+        state: directory
+        mode: "0700"
+
+    - name: Read the existing settings, if any
+      ansible.builtin.slurp:
+        src: /etc/secret-santa/secret-santa.env
+      register: existing_env
+      failed_when: false
+
+    - name: Keep the admin password, or make a new one
+      ansible.builtin.set_fact:
+        santa_admin_password: >-
+          {{ (existing_env.content | default('') | b64decode | regex_search('(?m)^ADMIN_PASSWORD=(.+)$', '\1') | default([], true) | first)
+             | default(lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']), true) }}
+        santa_new_password: "{{ existing_env.content is not defined }}"
+      no_log: true
+
+    - name: Settings
+      ansible.builtin.template:
+        src: secret-santa.env.j2
+        dest: /etc/secret-santa/secret-santa.env
+        mode: "0600"
+      no_log: true
+      notify: Restart app
+
+    - name: Container service (Podman Quadlet)
+      ansible.builtin.template:
+        src: secret-santa.container.j2
+        dest: /etc/containers/systemd/secret-santa.container
+        mode: "0644"
+      notify: Restart app
+
+    - name: Caddy configuration
+      ansible.builtin.template:
+        src: Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        mode: "0644"
+        validate: caddy validate --adapter caddyfile --config %s
+      notify: Reload caddy
+
+    - name: Generate the service from the Quadlet file
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: App running
+      ansible.builtin.systemd_service:
+        name: secret-santa
+        state: started
+
+    - name: Caddy running
+      ansible.builtin.systemd_service:
+        name: caddy
+        enabled: true
+        state: started
+
+    - name: Apply pending restarts before checking
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the app to answer
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8787/robots.txt
+      register: health
+      retries: 20
+      delay: 3
+      until: health.status == 200
+
+    - name: New admin password (shown once; it is also in /etc/secret-santa/secret-santa.env)
+      ansible.builtin.debug:
+        msg: "Admin password for {{ santa_public_url }}/admin: {{ santa_admin_password }}"
+      when: santa_new_password | bool
+
+  handlers:
+    # Handlers run in the order listed here.
+    - name: Load the uploaded image
+      ansible.builtin.command: podman load --input /var/tmp/secret-santa-image.tar.gz
+      changed_when: true
+
+    - name: Remove the uploaded image file
+      ansible.builtin.file:
+        path: /var/tmp/secret-santa-image.tar.gz
+        state: absent
+
+    - name: Restart journald
+      ansible.builtin.systemd_service:
+        name: systemd-journald
+        state: restarted
+
+    - name: Reload ssh
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: reloaded
+
+    - name: Reload nftables
+      ansible.builtin.systemd_service:
+        name: nftables
+        state: reloaded
+
+    - name: Restart app
+      ansible.builtin.systemd_service:
+        name: secret-santa
+        state: restarted
+        daemon_reload: true
+
+    - name: Reload caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded
+
+    - name: Remove unused images
+      ansible.builtin.command: podman image prune --force
+      changed_when: true
+      listen: Restart app

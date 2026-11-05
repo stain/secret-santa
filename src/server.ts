@@ -8,6 +8,7 @@
 //   PUBLIC_URL         e.g. https://santa.s11.no: used for links and origin
 //                      checks instead of trusting the Host header
 //   PORT               default 8787
+//   HOST               address to listen on; default all interfaces
 //   DATA_DIR           default ./data (database and backups)
 //   HOSTING_PROVIDER, HOSTING_LOCATION   named in the privacy notice
 //   BACKUP_DAYS        default 7; 0 turns nightly backups off
@@ -31,6 +32,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const PORT = Number(process.env.PORT ?? 8787);
+const HOST = process.env.HOST || undefined;
 const DATA_DIR = process.env.DATA_DIR ?? "data";
 const PUBLIC_URL = process.env.PUBLIC_URL ? new URL(process.env.PUBLIC_URL) : null;
 const BACKUP_DAYS = Number(process.env.BACKUP_DAYS ?? 7);
@@ -179,7 +181,7 @@ const server = createServer(async (req, res) => {
 
 server.requestTimeout = 30_000;
 server.headersTimeout = 10_000;
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`Secret Santa listening on port ${PORT}${PUBLIC_URL ? ` as ${PUBLIC_URL.origin}` : ""}`);
 });
 

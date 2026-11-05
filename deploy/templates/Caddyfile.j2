@@ -1,0 +1,16 @@
+# Managed by Ansible (deploy/site.yml): local changes are overwritten.
+# HTTPS for {{ santa_domain }}, proxying to the app container on localhost.
+# No access log: private links (with their keys) and visitors' IP addresses
+# are never written to disk.
+
+{{ santa_domain }} {
+{% if santa_tls_internal %}
+	tls internal
+{% endif %}
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8787
+}

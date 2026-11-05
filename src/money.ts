@@ -2,7 +2,7 @@
 
 import { backParam, readCookie, rememberChoice } from "./cookies";
 import { html, type Html } from "./html";
-import type { Ctx, Lang } from "./i18n";
+import { LOCALES, type Ctx, type Lang } from "./i18n";
 
 /** Currencies people can view prices in and set a budget in. */
 export const CURRENCIES = ["GBP", "NOK", "MXN"] as const;
@@ -12,7 +12,6 @@ export const DEFAULT_CURRENCY: Record<Lang, Currency> = { en: "GBP", es: "MXN", 
 
 /** Converted amounts are rounded to these steps: £1, 10 kr, MX$10. */
 const ROUNDING: Record<Currency, number> = { GBP: 1, NOK: 10, MXN: 10 };
-const LOCALES: Record<Lang, string> = { en: "en-GB", es: "es-MX", nb: "nb-NO" };
 const SYMBOLS: Record<Currency, string> = { GBP: "£", NOK: "kr", MXN: "$" };
 
 const RATES_API = "https://api.frankfurter.dev/v1/latest"; // ECB reference rates, base EUR

@@ -34,8 +34,15 @@ function isPublicHost(hostname: string): boolean {
   );
 }
 
-/** Fetches HTML, following redirects only to public hosts. */
-async function fetchPage(url: string): Promise<{ res: Response; base: string } | null> {
+/**
+ * Fetches a public URL whose Content-Type passes `accept`, following
+ * redirects only to public hosts. Also used by the image proxy (images.ts).
+ */
+export async function fetchPublic(
+  url: string,
+  acceptHeader: string,
+  accept: (contentType: string) => boolean,
+): Promise<{ res: Response; base: string } | null> {
   let current = url;
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
     const target = new URL(current);
@@ -45,7 +52,7 @@ async function fetchPage(url: string): Promise<{ res: Response; base: string } |
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; SecretSantaWishPreview/1.0)",
-        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+        Accept: acceptHeader,
       },
     });
     const location = res.headers.get("Location");
@@ -54,7 +61,7 @@ async function fetchPage(url: string): Promise<{ res: Response; base: string } |
       current = new URL(location, target).href;
       continue;
     }
-    if (!res.ok || !(res.headers.get("Content-Type") ?? "").includes("html")) {
+    if (!res.ok || !accept(res.headers.get("Content-Type") ?? "")) {
       await res.body?.cancel();
       return null;
     }
@@ -186,7 +193,7 @@ function validPrice(price: number | null, currency: string | undefined): Pick<Pr
 
 export async function fetchPreview(url: string): Promise<Preview> {
   try {
-    const page = await fetchPage(url);
+    const page = await fetchPublic(url, "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", (t) => t.includes("html"));
     return page?.res.body ? await extractPreview(page.res, page.base) : EMPTY;
   } catch {
     // Timeouts, network errors and shops that block robots: no preview.

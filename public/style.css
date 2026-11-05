@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "Mountains of Christmas";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/mountains-of-christmas-700.woff2") format("woff2");
+}
+
 :root {
   --red: #b3001b;
   --red-dark: #7a0012;
@@ -53,7 +61,12 @@ body {
   .snow, .snow::after { animation: none; }
 }
 
-header.site, main, footer.site { position: relative; z-index: 1; }
+header.site, main, footer.site a { color: inherit; }
+.notice-text h2 { margin-top: 1.2rem; font-size: 1.6rem; }
+.notice-text h2:first-child { margin-top: 0; }
+.your-data p { margin: 0.4rem 0; }
+
+footer.site { position: relative; z-index: 1; }
 
 header.site {
   text-align: center;
@@ -257,6 +270,10 @@ p.budget { background: #fdf3d7; border-radius: 8px; padding: 0.5rem 0.8rem; }
 
 form.inline { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
 form.inline input { width: 9rem; }
+form.inline .grow { flex: 1 1 16rem; }
+form.inline .grow input { width: 100%; }
+details.edit form { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+details.edit input { width: auto; min-width: 10rem; font-size: 0.85rem; padding: 0.3rem 0.5rem; }
 select {
   font: inherit;
   padding: 0.55rem 0.7rem;

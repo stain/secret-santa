@@ -22,6 +22,11 @@ The pages are rendered on the server and use plain HTML forms, with no client-si
 | `src/html.ts` | Escaping HTML template helper |
 | `src/layout.ts` | Page layout and security headers |
 | `src/i18n.ts` | Translations and language selection |
+| `src/privacy.ts` | Privacy notice (`/privacy`) in each language |
+| `src/images.ts` | Product photo proxy (`/img?u=…`) |
+| `src/preview.ts` | Product name, photo and price lookup |
+| `src/money.ts` | Currencies, exchange rates, budget |
+| `public/fonts/` | Self-hosted font and its licence |
 | `public/style.css` | Festive styling (static asset) |
 | `migrations/` | D1 schema migrations |
 
@@ -42,7 +47,7 @@ Go to <http://localhost:8787/admin> and log in with any user name and the `ADMIN
 
 ```sh
 npx wrangler login
-npx wrangler d1 create secret-santa   # copy the database_id into wrangler.jsonc
+npx wrangler d1 create secret-santa --jurisdiction eu   # keeps the data in the EU; copy the database_id into wrangler.jsonc
 npm run db:migrate:remote
 npx wrangler secret put ADMIN_PASSWORD
 npm run deploy
@@ -54,3 +59,22 @@ npm run deploy
 - One shared `ADMIN_PASSWORD` protects the admin pages, and admin form posts from other sites are refused. The admin page hides the drawn circle behind a "spoilers" toggle, in case the admin is taking part too.
 - Adding or removing people after the draw cancels the draw. Draw again and send the new links.
 - The server fetches product links itself. Each participant can trigger at most 30 fetches an hour (looking up a cached link doesn't count). Cached lookups and rate-limit records older than a day are deleted as new lookups are made.
+
+## Personal data and GDPR
+
+Each group's **organiser** is the data controller: they decide to run the event and are responsible for the participants' data. Cloudflare (and an email provider, if invitations are sent from the app) process it on their behalf. The app is built to make that easy to do properly:
+
+- **Data minimisation:** only names, email addresses, wishes and the draw are stored. There are no IP addresses, analytics or tracking. Email addresses are shown only to the admin.
+- **Transparency:** the privacy notice at `/privacy` (English, Spanish, Norwegian) is linked from every page and from the invitation email. Each participant's page names the organiser and the deletion date.
+- **Storage limitation:** each group has an end date (default 31 January). A daily cron trigger (`scheduled` in `src/index.ts`) deletes groups the day after, with all their participants and wishes. Product lookups and rate-limit records are kept for one day.
+- **Rights:** participants can download their data as JSON and change or delete their wishes. The admin can correct names and email addresses without redoing the draw, and removing someone deletes all their data.
+- **No third parties in the browser:** the font is served from the app, and product photos are passed through the Worker (`/img`), so visitors' browsers contact no other servers.
+- **Location and logs:** create the database with `--jurisdiction eu`. Workers Logs are off, because they would record private links and IP addresses.
+
+**What the organiser still has to do:**
+- Fill in their name and contact address on each group's admin page before sending links.
+- Answer participants' requests.
+- Keep the privacy notice in `src/privacy.ts` accurate if the deployment differs (for example, a database outside the EU).
+- Accept Cloudflare's data processing terms, which are part of its self-serve agreement, and, if invitations are sent through Google Workspace, Google's.
+
+To try the deletion job locally, run `npm run dev` and open `http://localhost:8787/__scheduled?cron=17+3+*+*+*`.

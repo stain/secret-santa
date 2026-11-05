@@ -14,5 +14,9 @@
       "migrations_dir": "migrations"
     }
   ],
-  "observability": { "enabled": true }
+  // Delete groups past their end date, daily at 03:17 UTC (GDPR storage limitation).
+  "triggers": { "crons": ["17 3 * * *"] },
+  // Request logs would record participants' private links and visitors' IP
+  // addresses, so Workers Logs stay off. `npx wrangler tail` still shows live logs.
+  "observability": { "enabled": false }
 }

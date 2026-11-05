@@ -13,10 +13,12 @@ import {
   listWishes,
   removeParticipant,
   setBudget,
+  setPrivacy,
+  updateParticipant,
   type Participant,
 } from "./db";
 import { html, redirect } from "./html";
-import type { Ctx } from "./i18n";
+import { formatDate, type Ctx } from "./i18n";
 import { errorPage, page } from "./layout";
 import { CURRENCIES, budgetText, getRates, isCurrency } from "./money";
 import { participantPath } from "./participant";
@@ -46,7 +48,7 @@ function mailto(ctx: Ctx, p: Participant, chainName: string): string {
   return (
     `mailto:${encodeURIComponent(p.email)}` +
     `?subject=${encodeURIComponent(ctx.t.mailSubject(chainName))}` +
-    `&body=${encodeURIComponent(ctx.t.mailBody(p.name, chainName, link))}`
+    `&body=${encodeURIComponent(ctx.t.mailBody(p.name, chainName, link, `${ctx.url.origin}/privacy`))}`
   );
 }
 
@@ -95,6 +97,24 @@ export async function handleAdmin(ctx: Ctx, request: Request, env: Env, path: st
         return errorPage(ctx, 400, t.badBudget);
       }
       await setBudget(env.DB, chain.id, limit, currency);
+      return redirect(back);
+    }
+    case "privacy": {
+      const organiser = field("organiser").slice(0, 200);
+      const endsOn = field("ends_on");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(endsOn) || Number.isNaN(Date.parse(endsOn))) {
+        return errorPage(ctx, 400, t.badDate);
+      }
+      await setPrivacy(env.DB, chain.id, organiser, endsOn);
+      return redirect(back);
+    }
+    case "edit": {
+      const name = field("name").slice(0, 100);
+      const email = field("email").toLowerCase();
+      if (!name || !EMAIL.test(email)) return errorPage(ctx, 400, t.badLines(`${name} ${email}`));
+      if (!(await updateParticipant(env.DB, chain.id, path[3] ?? "", name, email))) {
+        return errorPage(ctx, 400, t.emailTaken);
+      }
       return redirect(back);
     }
     case "remove":
@@ -169,6 +189,21 @@ async function chainPage(ctx: Ctx, env: Env, chainId: string): Promise<Response>
 ${added !== null && html`<p class="notice">${t.added(Number(added), Number(url.searchParams.get("skipped") ?? 0))}</p>`}
 ${url.searchParams.has("drawn") && html`<p class="notice">${t.namesDrawn}</p>`}
 
+${!chain.organiser && html`<p class="warning">${t.organiserWarning}</p>`}
+
+<section class="card">
+  <h2>${t.organiserHeading}</h2>
+  <p class="muted">${t.organiserHelp}</p>
+  <form method="post" action="${base}/privacy" class="inline">
+    <div class="grow"><label for="organiser">${t.organiserLabel}</label>
+      <input id="organiser" name="organiser" maxlength="200" value="${chain.organiser}" placeholder="Mrs Claus, mrs.claus@example.org"></div>
+    <div><label for="ends_on">${t.endsOnLabel}</label>
+      <input id="ends_on" name="ends_on" type="date" required value="${chain.ends_on ?? ""}"></div>
+    <button type="submit">${t.save}</button>
+  </form>
+  ${chain.ends_on && html`<p>${t.deletedOn(formatDate(ctx, chain.ends_on))}</p>`}
+</section>
+
 <section class="card">
   <h2>${t.participants(people.length)}</h2>
   ${chain.drawn_at && html`<p class="warning">${t.drawnWarning(chain.drawn_at)}</p>`}
@@ -177,7 +212,14 @@ ${url.searchParams.has("drawn") && html`<p class="notice">${t.namesDrawn}</p>`}
       <thead><tr><th>${t.thName}</th><th>${t.thEmail}</th><th>${t.thWishes}</th><th>${t.thLink}</th><th></th></tr></thead>
       <tbody>${people.map(
         (p) => html`<tr>
-          <td>${p.name}</td>
+          <td>${p.name}
+            <details class="edit"><summary>${t.edit}</summary>
+              <form method="post" action="${base}/edit/${p.id}">
+                <input name="name" required maxlength="100" value="${p.name}" aria-label="${t.thName}">
+                <input name="email" type="email" required value="${p.email}" aria-label="${t.thEmail}">
+                <button class="small" type="submit">${t.save}</button>
+              </form>
+            </details></td>
           <td>${p.email}</td>
           <td>${wishes.get(p.id)?.length ?? 0}/${MAX_WISHES}</td>
           <td><a href="${mailto(ctx, p, chain.name)}">${t.emailLink}</a>

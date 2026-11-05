@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --ip 0.0.0.0 --port 8787",
+    "dev": "wrangler dev --ip 0.0.0.0 --port 8787 --test-scheduled",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply secret-santa --local",
     "db:migrate:remote": "wrangler d1 migrations apply secret-santa --remote",

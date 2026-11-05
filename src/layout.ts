@@ -14,9 +14,9 @@ const SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
   "Content-Security-Policy":
     "default-src 'none'; script-src 'self'; connect-src 'self'; " +
-    "style-src 'self' https://fonts.googleapis.com; " +
-    // Product photos are shown straight from the shops' servers.
-    "font-src https://fonts.gstatic.com; img-src 'self' data: https:; " +
+    // Fonts and product photos are served from this site (see images.ts), so
+    // visitors' browsers never contact other servers.
+    "style-src 'self'; font-src 'self'; img-src 'self' data:; " +
     "form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
 
@@ -29,8 +29,6 @@ export function page(ctx: Ctx, title: string, body: Html, status = 200): Respons
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${title} · ${t.siteTitle}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -39,7 +37,7 @@ export function page(ctx: Ctx, title: string, body: Html, status = 200): Respons
 <main>
 ${body}
 </main>
-<footer class="site">${t.footer}</footer>
+<footer class="site">${t.footer} · <a href="/privacy">${t.privacy}</a></footer>
 </body>
 </html>`;
   return new Response(doc.value, { status, headers: SECURITY_HEADERS });

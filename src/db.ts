@@ -9,6 +9,8 @@ export interface Chain {
   drawn_at: string | null;
   price_limit: number | null; // suggested budget, not enforced
   currency: string;
+  organiser: string; // name and contact of whoever is responsible for the data
+  ends_on: string | null; // YYYY-MM-DD; all data is deleted the day after
 }
 
 export interface Participant {
@@ -18,6 +20,7 @@ export interface Participant {
   email: string;
   access_key: string;
   giftee_id: string | null;
+  created_at: string;
 }
 
 export interface Wish {
@@ -48,10 +51,37 @@ export function getChain(db: D1Database, id: string) {
   return db.prepare("SELECT * FROM chains WHERE id = ?").bind(id).first<Chain>();
 }
 
+/** The coming 31 January: by default, a group's data is deleted after it. */
+export function defaultEndDate(now = new Date()): string {
+  const year = now.getUTCMonth() === 0 ? now.getUTCFullYear() : now.getUTCFullYear() + 1;
+  return `${year}-01-31`;
+}
+
 export async function createChain(db: D1Database, name: string, currency: string): Promise<string> {
   const id = crypto.randomUUID();
-  await db.prepare("INSERT INTO chains (id, name, currency) VALUES (?, ?, ?)").bind(id, name, currency).run();
+  await db
+    .prepare("INSERT INTO chains (id, name, currency, ends_on) VALUES (?, ?, ?, ?)")
+    .bind(id, name, currency, defaultEndDate())
+    .run();
   return id;
+}
+
+export async function setPrivacy(db: D1Database, id: string, organiser: string, endsOn: string): Promise<void> {
+  await db.prepare("UPDATE chains SET organiser = ?, ends_on = ? WHERE id = ?").bind(organiser, endsOn, id).run();
+}
+
+/**
+ * Deletes every group whose end date has passed, with its participants and
+ * (by cascade) their wishes and lookup records. Run daily by the cron trigger.
+ */
+export async function purgeExpired(db: D1Database, today = new Date().toISOString().slice(0, 10)): Promise<number> {
+  const expired = "SELECT id FROM chains WHERE ends_on IS NOT NULL AND ends_on < ?";
+  const results = await db.batch([
+    db.prepare(`UPDATE participants SET giftee_id = NULL WHERE chain_id IN (${expired})`).bind(today),
+    db.prepare(`DELETE FROM participants WHERE chain_id IN (${expired})`).bind(today),
+    db.prepare("DELETE FROM chains WHERE ends_on IS NOT NULL AND ends_on < ?").bind(today),
+  ]);
+  return results[2].meta.changes ?? 0;
 }
 
 export async function setBudget(db: D1Database, id: string, limit: number | null, currency: string): Promise<void> {
@@ -101,6 +131,26 @@ export async function addParticipants(
   );
   const results = await db.batch([...clearDraw(db, chainId), ...inserts]);
   return results.slice(2).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+}
+
+/** Corrects a participant's name or email (GDPR rectification); the draw is kept. */
+export async function updateParticipant(
+  db: D1Database,
+  chainId: string,
+  id: string,
+  name: string,
+  email: string,
+): Promise<boolean> {
+  const clash = await db
+    .prepare("SELECT 1 FROM participants WHERE chain_id = ? AND email = ? AND id <> ?")
+    .bind(chainId, email, id)
+    .first();
+  if (clash) return false;
+  await db
+    .prepare("UPDATE participants SET name = ?, email = ? WHERE id = ? AND chain_id = ?")
+    .bind(name, email, id, chainId)
+    .run();
+  return true;
 }
 
 export async function removeParticipant(db: D1Database, chainId: string, id: string): Promise<void> {

@@ -52,6 +52,26 @@ const en = {
   budgetAmount: "Amount",
   saveBudget: "Save budget",
   badBudget: "The budget must be a positive number.",
+  privacy: "Privacy",
+  privacyTitle: "Privacy notice",
+  yourData: "Your data",
+  organiserContact: "Responsible for your data (the organiser):",
+  organiserMissing: "The organiser hasn't added their contact details yet.",
+  deletedOn: (date: string) => `All data for this group is deleted automatically after ${date}.`,
+  yourDataHelp:
+    "You can change or delete your wishes above at any time. To correct your name or email address, or to be removed with all your data, contact the organiser.",
+  downloadData: "Download my data",
+  privacyLink: "How your data is handled",
+  organiserHeading: "Organiser and data deletion",
+  organiserHelp:
+    "Participants see this on their page as the person responsible for their data (GDPR). Give a name and an email address. On the day after the end date, the group and all its data are deleted automatically.",
+  organiserLabel: "Organiser's name and email",
+  endsOnLabel: "End date",
+  organiserWarning: "Add the organiser's contact details before sending the links: participants need to know whom to ask about their data.",
+  badDate: "Choose a valid end date.",
+  save: "Save",
+  edit: "Edit",
+  emailTaken: "Someone in this group already has that email address.",
   saveWishes: "Send to the North Pole",
   everyonesWishes: "Everyone's wishes",
   you: "(you)",
@@ -102,10 +122,11 @@ const en = {
   deleteConfirm: (name: string) => `Delete "${name}", its participants and their wishes`,
   deleteButton: "Delete group",
   mailSubject: (chain: string) => `Your Secret Santa link: ${chain}`,
-  mailBody: (name: string, chain: string, link: string) =>
+  mailBody: (name: string, chain: string, link: string, privacy: string) =>
     `Hi ${name},\n\nHere is your private Secret Santa page for "${chain}". ` +
     `Open it to see whom you give a present to and to add your own wishes:\n\n${link}\n\n` +
-    `Don't share this link: anyone with it can see your page.\n\nHo ho ho!`,
+    `Don't share this link: anyone with it can see your page.\n\n` +
+    `How your data is handled: ${privacy}\n\nHo ho ho!`,
 };
 
 export type Dict = typeof en;
@@ -154,6 +175,26 @@ const es: Dict = {
   budgetAmount: "Cantidad",
   saveBudget: "Guardar presupuesto",
   badBudget: "El presupuesto debe ser un número positivo.",
+  privacy: "Privacidad",
+  privacyTitle: "Aviso de privacidad",
+  yourData: "Tus datos",
+  organiserContact: "Responsable de tus datos (quien organiza):",
+  organiserMissing: "Quien organiza todavía no ha añadido sus datos de contacto.",
+  deletedOn: (date) => `Todos los datos de este grupo se borran automáticamente después del ${date}.`,
+  yourDataHelp:
+    "Puedes cambiar o borrar tus deseos arriba cuando quieras. Para corregir tu nombre o tu correo, o para que te quiten del grupo con todos tus datos, ponte en contacto con quien organiza.",
+  downloadData: "Descargar mis datos",
+  privacyLink: "Cómo se tratan tus datos",
+  organiserHeading: "Organización y borrado de datos",
+  organiserHelp:
+    "Los participantes ven esto en su página como la persona responsable de sus datos (RGPD). Indica un nombre y un correo. El día después de la fecha de fin, el grupo y todos sus datos se borran automáticamente.",
+  organiserLabel: "Nombre y correo de quien organiza",
+  endsOnLabel: "Fecha de fin",
+  organiserWarning: "Añade los datos de contacto de quien organiza antes de enviar los enlaces: los participantes deben saber a quién preguntar por sus datos.",
+  badDate: "Elige una fecha de fin válida.",
+  save: "Guardar",
+  edit: "Editar",
+  emailTaken: "Alguien de este grupo ya tiene esa dirección de correo.",
   saveWishes: "Enviar al Polo Norte",
   everyonesWishes: "Los deseos de todos",
   you: "(tú)",
@@ -204,10 +245,11 @@ const es: Dict = {
   deleteConfirm: (name) => `Eliminar «${name}», sus participantes y sus deseos`,
   deleteButton: "Eliminar grupo",
   mailSubject: (chain) => `Tu enlace de Santa Secreto: ${chain}`,
-  mailBody: (name, chain, link) =>
+  mailBody: (name, chain, link, privacy) =>
     `Hola, ${name}:\n\nEsta es tu página privada de Santa Secreto para «${chain}». ` +
     `Ábrela para ver a quién le haces un regalo y para añadir tus propios deseos:\n\n${link}\n\n` +
-    `No compartas este enlace: cualquiera que lo tenga puede ver tu página.\n\n¡Jo, jo, jo!`,
+    `No compartas este enlace: cualquiera que lo tenga puede ver tu página.\n\n` +
+    `Cómo se tratan tus datos: ${privacy}\n\n¡Jo, jo, jo!`,
 };
 
 const nb: Dict = {
@@ -254,6 +296,26 @@ const nb: Dict = {
   budgetAmount: "Beløp",
   saveBudget: "Lagre budsjett",
   badBudget: "Budsjettet må være et positivt tall.",
+  privacy: "Personvern",
+  privacyTitle: "Personvernerklæring",
+  yourData: "Dine data",
+  organiserContact: "Ansvarlig for dataene dine (arrangøren):",
+  organiserMissing: "Arrangøren har ikke lagt inn kontaktinformasjon ennå.",
+  deletedOn: (date) => `Alle data for denne gruppen slettes automatisk etter ${date}.`,
+  yourDataHelp:
+    "Du kan endre eller slette ønskene dine ovenfor når som helst. For å rette navnet eller e-postadressen din, eller bli fjernet med alle dataene dine, kontakt arrangøren.",
+  downloadData: "Last ned dataene mine",
+  privacyLink: "Slik behandles dataene dine",
+  organiserHeading: "Arrangør og sletting av data",
+  organiserHelp:
+    "Deltakerne ser dette på siden sin som den som er ansvarlig for dataene deres (personvernforordningen). Oppgi navn og e-postadresse. Dagen etter sluttdatoen slettes gruppen og alle dataene automatisk.",
+  organiserLabel: "Arrangørens navn og e-post",
+  endsOnLabel: "Sluttdato",
+  organiserWarning: "Legg inn arrangørens kontaktinformasjon før du sender lenkene: deltakerne må vite hvem de kan spørre om dataene sine.",
+  badDate: "Velg en gyldig sluttdato.",
+  save: "Lagre",
+  edit: "Endre",
+  emailTaken: "Noen i denne gruppen har allerede den e-postadressen.",
   saveWishes: "Send til Nordpolen",
   everyonesWishes: "Alles ønsker",
   you: "(deg)",
@@ -304,14 +366,25 @@ const nb: Dict = {
   deleteConfirm: (name) => `Slett «${name}», deltakerne og ønskene deres`,
   deleteButton: "Slett gruppe",
   mailSubject: (chain) => `Din lenke til hemmelig nisse: ${chain}`,
-  mailBody: (name, chain, link) =>
+  mailBody: (name, chain, link, privacy) =>
     `Hei ${name},\n\nHer er din private side for hemmelig nisse i «${chain}». ` +
     `Åpne den for å se hvem du skal gi en gave til, og for å legge inn dine egne ønsker:\n\n${link}\n\n` +
-    `Ikke del lenken: alle som har den, kan se siden din.\n\nHo ho ho!`,
+    `Ikke del lenken: alle som har den, kan se siden din.\n\n` +
+    `Slik behandles dataene dine: ${privacy}\n\nHo ho ho!`,
 };
 
 export const DICTS = { en, es, nb } as const;
 export type Lang = keyof typeof DICTS;
+
+export const LOCALES: Record<Lang, string> = { en: "en-GB", es: "es-MX", nb: "nb-NO" };
+
+/** "31 January 2027" from "2027-01-31", in the page's language. */
+export function formatDate(ctx: Ctx, isoDate: string): string {
+  const date = new Date(`${isoDate}T12:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? isoDate
+    : new Intl.DateTimeFormat(LOCALES[ctx.lang], { dateStyle: "long", timeZone: "UTC" }).format(date);
+}
 
 /** Per-request context: the chosen language and the request URL. */
 export interface Ctx {

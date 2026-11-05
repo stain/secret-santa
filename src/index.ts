@@ -1,14 +1,17 @@
 // Worker entry point. Static files in public/ are served before this runs.
 
 import { handleAdmin } from "./admin";
+import { purgeExpired } from "./db";
 import { html } from "./html";
 import { resolveContext, switchLanguage } from "./i18n";
 import { errorPage, page } from "./layout";
 import { switchCurrency } from "./money";
+import { handleImage } from "./images";
 import { handleParticipant } from "./participant";
+import { privacyPage } from "./privacy";
 
 export default {
-  async fetch(request, env): Promise<Response> {
+  async fetch(request, env, execution): Promise<Response> {
     const ctx = resolveContext(request);
     const { t } = ctx;
     const path = ctx.url.pathname.split("/").filter(Boolean);
@@ -24,12 +27,20 @@ export default {
 </section>`,
       );
     }
+    if (path[0] === "privacy" && path.length === 1) return privacyPage(ctx);
+    if (path[0] === "img" && path.length === 1) return handleImage(request, env, execution);
     if (path[0] === "lang" && path.length === 2) return switchLanguage(ctx.url, path[1]);
     if (path[0] === "cur" && path.length === 2) return switchCurrency(ctx.url, path[1]);
-    if (path[0] === "p" && (path.length === 2 || (path.length === 3 && path[2] === "preview"))) {
+    if (path[0] === "p" && (path.length === 2 || (path.length === 3 && ["preview", "data"].includes(path[2])))) {
       return handleParticipant(ctx, request, env, path[1], path[2]);
     }
     if (path[0] === "admin") return handleAdmin(ctx, request, env, path.slice(1));
     return errorPage(ctx, 404, t.notFound);
+  },
+
+  /** Daily (see triggers in wrangler.jsonc): delete groups past their end date. */
+  async scheduled(_controller, env): Promise<void> {
+    const deleted = await purgeExpired(env.DB);
+    console.log(`Deleted ${deleted} expired group(s)`);
   },
 } satisfies ExportedHandler<Env>;

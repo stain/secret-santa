@@ -1,5 +1,6 @@
 // A participant's private page: /p/<uuid>?key=<secret>
-// and its product lookup for the wish form: /p/<uuid>/preview?key=<secret>&url=<link>
+// its product lookup for the wish form: /p/<uuid>/preview?key=<secret>&url=<link>
+// and their data as JSON (GDPR access and portability): /p/<uuid>/data?key=<secret>
 
 import {
   MAX_WISHES,
@@ -14,7 +15,8 @@ import {
   type Wish,
 } from "./db";
 import { Html, html, redirect } from "./html";
-import type { Ctx } from "./i18n";
+import { formatDate, type Ctx } from "./i18n";
+import { imageSrc } from "./images";
 import { errorPage, page } from "./layout";
 import { budgetText, convert, getRates, isCurrency, priceText, type Rates } from "./money";
 import { cachedPreview } from "./preview";
@@ -73,7 +75,7 @@ function renderWishes(pc: PriceContext, wishes: Wish[]): Html {
   return html`<ol class="ideas">${wishes.map((w) => {
     if (!w.url) return html`<li>${w.text}</li>`;
     return html`<li class="product">
-      ${w.image && html`<a href="${w.url}" ${LINK_OUT} tabindex="-1"><img src="${w.image}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`}
+      ${w.image && html`<a href="${w.url}" ${LINK_OUT} tabindex="-1"><img src="${imageSrc(w.image)}" alt="" loading="lazy"></a>`}
       <div>
         <a class="product-title" href="${w.url}" ${LINK_OUT}>${w.title || w.text || hostOf(w.url)}</a>
         ${w.title && w.text && html`<div class="note">${w.text}</div>`}
@@ -103,12 +105,41 @@ async function previewJson(ctx: Ctx, env: Env, me: Participant): Promise<Respons
   const rates = preview?.price != null ? await getRates(env.DB) : null;
   const body = {
     title: preview?.title ?? "",
-    image: preview?.image ?? "",
+    image: preview?.image ? imageSrc(preview.image) : "",
     price: preview?.price != null && rates ? priceText(ctx, rates, preview.price, preview.currency) : "",
   };
   return new Response(JSON.stringify(body), {
     status: link === null ? 400 : limited ? 429 : 200,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+  });
+}
+
+/** Everything stored about the participant, as a JSON download. */
+async function dataExport(env: Env, me: Participant): Promise<Response> {
+  const chain = (await getChain(env.DB, me.chain_id))!;
+  const giftee = me.giftee_id ? await getParticipant(env.DB, me.giftee_id) : null;
+  const data = {
+    group: { name: chain.name, organiser: chain.organiser, deletedAfter: chain.ends_on },
+    you: { name: me.name, email: me.email, addedAt: me.created_at },
+    youGiveTo: giftee?.name ?? null,
+    wishes: (await getWishes(env.DB, me.id)).map(({ position, text, url, title, image, price, currency }) => ({
+      position,
+      text,
+      url,
+      productName: title,
+      productImage: image,
+      price,
+      currency,
+    })),
+    note: "Who gives you a present is not included: it is the one thing kept secret from you.",
+  };
+  return new Response(JSON.stringify(data, null, 2), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="secret-santa-my-data.json"',
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
   });
 }
 
@@ -123,6 +154,7 @@ export async function handleParticipant(
   const me = await authorise(env, id, url);
   if (!me) return errorPage(ctx, 404, t.badLink);
   if (sub === "preview") return previewJson(ctx, env, me);
+  if (sub === "data") return dataExport(env, me);
 
   if (request.method === "POST") {
     // The key in the form address already stops other sites posting here;
@@ -186,7 +218,7 @@ export async function handleParticipant(
       <label for="url${n}">${t.ideaLink}</label>
       <input id="url${n}" name="url${n}" type="url" maxlength="${MAX_URL_LENGTH}" placeholder="https://" value="${w?.url ?? ""}" data-preview-for="${n}">
       <div class="preview" id="preview${n}" aria-live="polite">${w?.url && (w.title || w.image) && html`
-        ${w.image && html`<img src="${w.image}" alt="" referrerpolicy="no-referrer">`}
+        ${w.image && html`<img src="${imageSrc(w.image)}" alt="">`}
         <div><strong>${w.title}</strong>${w.price !== null && html`<div class="price">${priceText(ctx, pc.rates, w.price, w.currency)}</div>`}</div>`}</div>
       <label for="text${n}">${t.ideaText}</label>
       <input id="text${n}" name="text${n}" maxlength="${MAX_TEXT_LENGTH}" value="${w?.text ?? ""}" placeholder="${w?.title ?? ""}">
@@ -220,6 +252,15 @@ ${assignment}
         ${theirs.length ? renderWishes(pc, theirs) : html`<span class="muted">${t.noWishes}</span>`}</li>`;
     })}
   </ul>
+</section>
+<section class="card your-data">
+  <h2>${t.yourData}</h2>
+  ${chain.organiser
+    ? html`<p>${t.organiserContact} <strong>${chain.organiser}</strong></p>`
+    : html`<p class="muted">${t.organiserMissing}</p>`}
+  ${chain.ends_on && html`<p>${t.deletedOn(formatDate(ctx, chain.ends_on))}</p>`}
+  <p>${t.yourDataHelp}</p>
+  <p><a href="${`/p/${me.id}/data?key=${encodeURIComponent(me.access_key)}`}" download>⬇️ ${t.downloadData}</a> · <a href="/privacy">${t.privacyLink}</a></p>
 </section>
 <script src="/wish-form.js" defer></script>`,
   );

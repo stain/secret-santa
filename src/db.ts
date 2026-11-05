@@ -22,6 +22,8 @@ export interface Wish {
   position: number;
   text: string;
   url: string;
+  title: string; // looked up from url, see preview.ts
+  image: string;
 }
 
 export const MIN_PARTICIPANTS = 3;
@@ -124,7 +126,7 @@ export async function drawChain(db: D1Database, chainId: string): Promise<void> 
 export async function listWishes(db: D1Database, chainId: string): Promise<Map<string, Wish[]>> {
   const { results } = await db
     .prepare(
-      `SELECT w.participant_id, w.position, w.text, w.url
+      `SELECT w.participant_id, w.position, w.text, w.url, w.title, w.image
          FROM wishes w JOIN participants p ON p.id = w.participant_id
         WHERE p.chain_id = ? ORDER BY w.position`,
     )
@@ -137,6 +139,14 @@ export async function listWishes(db: D1Database, chainId: string): Promise<Map<s
   return byPerson;
 }
 
+export async function getWishes(db: D1Database, participantId: string): Promise<Wish[]> {
+  const { results } = await db
+    .prepare("SELECT position, text, url, title, image FROM wishes WHERE participant_id = ? ORDER BY position")
+    .bind(participantId)
+    .all<Wish>();
+  return results;
+}
+
 /** Replaces a participant's wish ideas; positions are renumbered from 1. */
 export async function setWishes(db: D1Database, id: string, wishes: Omit<Wish, "position">[]): Promise<void> {
   await db.batch([
@@ -145,8 +155,8 @@ export async function setWishes(db: D1Database, id: string, wishes: Omit<Wish, "
       .slice(0, MAX_WISHES)
       .map((w, i) =>
         db
-          .prepare("INSERT INTO wishes (participant_id, position, text, url) VALUES (?, ?, ?, ?)")
-          .bind(id, i + 1, w.text, w.url),
+          .prepare("INSERT INTO wishes (participant_id, position, text, url, title, image) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(id, i + 1, w.text, w.url, w.title, w.image),
       ),
   ]);
 }

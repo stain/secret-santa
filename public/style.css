@@ -187,6 +187,7 @@ ul.chains .muted { margin-left: 0.5rem; font-size: 0.9rem; }
 
 /* Wish ideas */
 ol.ideas { margin: 0.2rem 0 0; padding-left: 1.4rem; }
+ol.ideas li.product { margin-left: -1.4rem; list-style: none; }
 ol.ideas li { margin: 0.2rem 0; overflow-wrap: anywhere; }
 .wishbox {
   margin: 0 auto;
@@ -197,15 +198,36 @@ ol.ideas li { margin: 0.2rem 0; overflow-wrap: anywhere; }
   border-radius: 6px;
   text-align: left;
 }
-a.shop {
-  font-size: 0.85rem;
-  white-space: nowrap;
+li.product {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background: #fff;
+  border: 1px solid #eee2cf;
+  border-radius: 10px;
+}
+li.product img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+  display: block;
+}
+a.product-title { font-weight: 600; }
+li.product .note { margin-top: 0.15rem; }
+.shop {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
   padding: 0.05rem 0.5rem;
   border-radius: 999px;
   background: #e3f4ea;
-  text-decoration: none;
+  color: var(--green);
 }
-a.shop:hover { background: #c9ead6; }
+p.found { margin: 0.3rem 0 0; font-size: 0.85rem; color: var(--green); overflow-wrap: anywhere; }
 fieldset.idea {
   border: 2px dashed #e4d6bf;
   border-radius: 10px;

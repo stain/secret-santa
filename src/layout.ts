@@ -13,7 +13,8 @@ const SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
   "Content-Security-Policy":
     "default-src 'none'; style-src 'self' https://fonts.googleapis.com; " +
-    "font-src https://fonts.gstatic.com; img-src 'self' data:; " +
+    // Product photos are shown straight from the shops' servers.
+    "font-src https://fonts.gstatic.com; img-src 'self' data: https:; " +
     "form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
 

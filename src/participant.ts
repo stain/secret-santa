@@ -4,15 +4,17 @@ import {
   MAX_WISHES,
   getChain,
   getParticipant,
+  getWishes,
   listParticipants,
   listWishes,
   setWishes,
   type Participant,
   type Wish,
 } from "./db";
-import { html, redirect, type Html } from "./html";
+import { Html, html, redirect } from "./html";
 import type { Ctx } from "./i18n";
 import { errorPage, page } from "./layout";
+import { fetchPreview } from "./preview";
 import { safeEqual } from "./security";
 
 const MAX_TEXT_LENGTH = 300;
@@ -48,12 +50,20 @@ function hostOf(url: string): string {
   return new URL(url).hostname.replace(/^www\./, "");
 }
 
-/** A list of wish ideas, each linking out to its shop page if it has one. */
+/** A list of wish ideas; linked ones show as product cards with name and photo. */
 function renderWishes(wishes: Wish[]): Html {
-  return html`<ol class="ideas">${wishes.map(
-    (w) => html`<li>${w.text}${w.url &&
-      html` <a class="shop" href="${w.url}" target="_blank" rel="noopener noreferrer nofollow">${hostOf(w.url)} ↗</a>`}</li>`,
-  )}</ol>`;
+  const out = 'target="_blank" rel="noopener noreferrer nofollow"';
+  return html`<ol class="ideas">${wishes.map((w) => {
+    if (!w.url) return html`<li>${w.text}</li>`;
+    return html`<li class="product">
+      ${w.image && html`<a href="${w.url}" ${new Html(out)} tabindex="-1"><img src="${w.image}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`}
+      <div>
+        <a class="product-title" href="${w.url}" ${new Html(out)}>${w.title || w.text || hostOf(w.url)}</a>
+        ${w.title && w.text && html`<div class="note">${w.text}</div>`}
+        <span class="shop">${hostOf(w.url)} ↗</span>
+      </div>
+    </li>`;
+  })}</ol>`;
 }
 
 export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id: string): Promise<Response> {
@@ -63,14 +73,24 @@ export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id
 
   if (request.method === "POST") {
     const form = await request.formData().catch(() => new FormData());
-    const wishes: Omit<Wish, "position">[] = [];
+    const entered: { text: string; url: string }[] = [];
     for (let i = 1; i <= MAX_WISHES; i++) {
       const text = String(form.get(`text${i}`) ?? "").trim().slice(0, MAX_TEXT_LENGTH);
       const rawUrl = String(form.get(`url${i}`) ?? "").trim();
       const link = normaliseUrl(rawUrl);
       if (link === null) return errorPage(ctx, 400, t.badUrl(rawUrl.slice(0, 100)));
-      if (text || link) wishes.push({ text, url: link });
+      if (text || link) entered.push({ text, url: link });
     }
+    // Look up product details for new or changed links; keep earlier lookups
+    // of unchanged links, unless they found nothing last time.
+    const previous = await getWishes(env.DB, me.id);
+    const wishes = await Promise.all(
+      entered.map(async (w) => {
+        if (!w.url) return { ...w, title: "", image: "" };
+        const known = previous.find((p) => p.url === w.url && (p.title || p.image));
+        return { ...w, ...(known ? { title: known.title, image: known.image } : await fetchPreview(w.url)) };
+      }),
+    );
     await setWishes(env.DB, me.id, wishes);
     return redirect(participantPath(me) + "&saved=1");
   }
@@ -105,6 +125,7 @@ export async function handleParticipant(ctx: Ctx, request: Request, env: Env, id
       <input id="text${n}" name="text${n}" maxlength="${MAX_TEXT_LENGTH}" value="${w?.text ?? ""}">
       <label for="url${n}">${t.ideaLink}</label>
       <input id="url${n}" name="url${n}" type="url" maxlength="${MAX_URL_LENGTH}" placeholder="https://" value="${w?.url ?? ""}">
+      ${w?.title && html`<p class="found">${t.foundPreview} ${w.title}</p>`}
     </fieldset>`;
   });
 

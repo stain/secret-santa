@@ -72,14 +72,19 @@ export async function setPrivacy(db: D1Database, id: string, organiser: string, 
 
 /**
  * Deletes every group whose end date has passed, with its participants and
- * (by cascade) their wishes and lookup records. Run daily by the cron trigger.
+ * (by cascade) their wishes and lookup records, plus product lookups and
+ * rate-limit records older than a day. Run daily by the cron trigger.
  */
-export async function purgeExpired(db: D1Database, today = new Date().toISOString().slice(0, 10)): Promise<number> {
+export async function purgeExpired(db: D1Database, now = new Date()): Promise<number> {
+  const today = now.toISOString().slice(0, 10);
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const expired = "SELECT id FROM chains WHERE ends_on IS NOT NULL AND ends_on < ?";
   const results = await db.batch([
     db.prepare(`UPDATE participants SET giftee_id = NULL WHERE chain_id IN (${expired})`).bind(today),
     db.prepare(`DELETE FROM participants WHERE chain_id IN (${expired})`).bind(today),
     db.prepare("DELETE FROM chains WHERE ends_on IS NOT NULL AND ends_on < ?").bind(today),
+    db.prepare("DELETE FROM previews WHERE fetched_at < ?").bind(dayAgo),
+    db.prepare("DELETE FROM lookups WHERE at < ?").bind(dayAgo),
   ]);
   return results[2].meta.changes ?? 0;
 }

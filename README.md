@@ -62,7 +62,7 @@ npm run deploy
 
 ## Personal data and GDPR
 
-Each group's **organiser** is the data controller: they decide to run the event and are responsible for the participants' data. Cloudflare (and an email provider, if invitations are sent from the app) process it on their behalf. The app is built to make that easy to do properly:
+Each group's **organiser** is the data controller: they decide to run the event and are responsible for the participants' data. Cloudflare processes it on their behalf. The app sends no email: the organiser sends each private link from their own email program (the admin page's `mailto:` links). The app is built to make that easy to do properly:
 
 - **Data minimisation:** only names, email addresses, wishes and the draw are stored. There are no IP addresses, analytics or tracking. Email addresses are shown only to the admin.
 - **Transparency:** the privacy notice at `/privacy` (English, Spanish, Norwegian) is linked from every page and from the invitation email. Each participant's page names the organiser and the deletion date.
@@ -75,6 +75,6 @@ Each group's **organiser** is the data controller: they decide to run the event 
 - Fill in their name and contact address on each group's admin page before sending links.
 - Answer participants' requests.
 - Keep the privacy notice in `src/privacy.ts` accurate if the deployment differs (for example, a database outside the EU).
-- Accept Cloudflare's data processing terms, which are part of its self-serve agreement, and, if invitations are sent through Google Workspace, Google's.
+- Accept Cloudflare's data processing terms, which are part of its self-serve agreement.
 
 To try the deletion job locally, run `npm run dev` and open `http://localhost:8787/__scheduled?cron=17+3+*+*+*`.

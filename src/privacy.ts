@@ -32,7 +32,7 @@ const NOTICE: Record<Lang, Html> = {
 <h2>Who else handles it</h2>
 <ul>
   <li><strong>Cloudflare</strong> runs the app and its database on the organiser's behalf, under Cloudflare's data processing terms. The database is kept in the European Union.</li>
-  <li>If the organiser sends invitations from the app, they go through the organiser's own email provider, which keeps a copy as sent mail.</li>
+  <li>The organiser emails you your private link from their own email account, so their email provider also has your address and a copy of that message. The app itself sends no email.</li>
   <li>Product links you enter are fetched by the app's server, not your browser, and product photos are passed on by the server, so shops never see your visit.</li>
   <li>Exchange rates come from the European Central Bank (via frankfurter.dev); no personal data is sent.</li>
 </ul>
@@ -77,7 +77,7 @@ const NOTICE: Record<Lang, Html> = {
 <h2>Quién más los trata</h2>
 <ul>
   <li><strong>Cloudflare</strong> ejecuta la aplicación y su base de datos por cuenta de quien organiza, según las condiciones de tratamiento de datos de Cloudflare. La base de datos se guarda en la Unión Europea.</li>
-  <li>Si quien organiza envía las invitaciones desde la aplicación, pasan por su propio proveedor de correo, que guarda una copia en los enviados.</li>
+  <li>Quien organiza te envía tu enlace privado desde su propia cuenta de correo, así que su proveedor de correo también tiene tu dirección y una copia de ese mensaje. La aplicación no envía correos.</li>
   <li>Los enlaces de productos que escribes los consulta el servidor de la aplicación, no tu navegador, y las fotos de los productos también pasan por el servidor, así que las tiendas nunca ven tu visita.</li>
   <li>Los tipos de cambio vienen del Banco Central Europeo (a través de frankfurter.dev); no se envía ningún dato personal.</li>
 </ul>
@@ -122,7 +122,7 @@ const NOTICE: Record<Lang, Html> = {
 <h2>Hvem andre som behandler dem</h2>
 <ul>
   <li><strong>Cloudflare</strong> driver appen og databasen på vegne av arrangøren, etter Cloudflares vilkår for databehandling. Databasen lagres i EU.</li>
-  <li>Hvis arrangøren sender invitasjoner fra appen, går de via arrangørens egen e-postleverandør, som beholder en kopi som sendt e-post.</li>
+  <li>Arrangøren sender deg den private lenken fra sin egen e-postkonto, så e-postleverandøren deres har også adressen din og en kopi av meldingen. Appen sender ingen e-post selv.</li>
   <li>Produktlenker du legger inn, hentes av appens server, ikke nettleseren din, og produktbilder sendes videre av serveren, så butikkene ser aldri besøket ditt.</li>
   <li>Valutakurser hentes fra Den europeiske sentralbanken (via frankfurter.dev); ingen personopplysninger sendes.</li>
 </ul>

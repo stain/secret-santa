@@ -160,13 +160,16 @@
       when: server_image.stdout != lookup('ansible.builtin.file', santa_image_id_file)
       notify: [Load the uploaded image, Remove the uploaded image file, Restart app]
 
-    - name: Data directory (owned by the container's node user)
+    # The database lives here, outside the image: deploying a new image never
+    # touches it, and nothing in this playbook deletes it.
+    - name: Data and backup directories (owned by the container's node user)
       ansible.builtin.file:
-        path: /var/lib/secret-santa
+        path: "{{ item }}"
         state: directory
         owner: "1000"
         group: "1000"
         mode: "0700"
+      loop: [/var/lib/secret-santa, /var/lib/secret-santa/backups]
 
     - name: Settings directory
       ansible.builtin.file:
@@ -267,6 +270,28 @@
       ansible.builtin.systemd_service:
         name: nftables
         state: reloaded
+
+    # Runs before "Restart app" (handlers run in the order listed): a dump of
+    # the database before every restart, so a bad release can be rolled back.
+    # If the dump fails or looks empty, this fails and the restart doesn't happen.
+    # Runs as uid 1000 so SQLite can't leave files the app can't write.
+    - name: Back up the database before restarting
+      ansible.builtin.shell: |
+        set -o errexit -o pipefail
+        data=/var/lib/secret-santa
+        if [ -f "$data/santa.db" ]; then
+          out="$data/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+          trap 'rm -f "$out.tmp"' EXIT
+          setpriv --reuid=1000 --regid=1000 --clear-groups \
+            sqlite3 -bail "$data/santa.db" .dump | gzip > "$out.tmp"
+          gunzip -c "$out.tmp" | grep -q "CREATE TABLE participants" || { rm -f "$out.tmp"; echo "Backup looks empty" >&2; exit 1; }
+          mv "$out.tmp" "$out"
+        fi
+        find "$data/backups" -name 'pre-deploy-*.sql.gz' -mtime +7 -delete
+      args:
+        executable: /bin/bash
+      changed_when: true
+      listen: Restart app
 
     - name: Restart app
       ansible.builtin.systemd_service:

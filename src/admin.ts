@@ -37,6 +37,11 @@ export function parsePeople(text: string) {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
+    // Long lines are rejected before matching: the patterns below can be slow on them.
+    if (line.length > 300) {
+      bad.push(line.slice(0, 60) + "…");
+      continue;
+    }
     const m = line.match(/^(.+?)\s*<([^>]+)>$/) ?? line.match(/^(.+?)\s*[,;\t]\s*(\S+)$/);
     const name = m?.[1].trim().slice(0, 100);
     const email = m?.[2].trim().toLowerCase();

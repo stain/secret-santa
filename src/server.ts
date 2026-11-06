@@ -16,7 +16,6 @@
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join } from "node:path";
-import { Readable } from "node:stream";
 import { backUp } from "./backup";
 import { purgeExpired } from "./db";
 import type { Env } from "./env";
@@ -119,7 +118,23 @@ const staticFiles = new Map(
 
 // --- HTTP ---
 
-function toRequest(req: IncomingMessage): Request {
+const MAX_BODY_BYTES = 100_000; // forms are small
+
+class TooLarge extends Error {}
+
+/** Reads a request body, stopping as soon as it exceeds MAX_BODY_BYTES (also for chunked bodies). */
+async function readBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    total += chunk.length;
+    if (total > MAX_BODY_BYTES) throw new TooLarge(); // stop reading; the connection is closed after the reply
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+async function toRequest(req: IncomingMessage): Promise<Request> {
   const base = PUBLIC_URL ?? new URL(`http://${req.headers.host ?? `localhost:${PORT}`}`);
   const url = new URL(req.url ?? "/", base);
   const headers = new Headers();
@@ -131,9 +146,8 @@ function toRequest(req: IncomingMessage): Request {
   return new Request(url, {
     method: req.method,
     headers,
-    body: hasBody ? (Readable.toWeb(req) as ReadableStream) : undefined,
-    duplex: hasBody ? "half" : undefined,
-  } as RequestInit);
+    body: hasBody ? await readBody(req) : undefined,
+  });
 }
 
 async function send(res: ServerResponse, response: Response, method: string | undefined): Promise<void> {
@@ -150,8 +164,6 @@ async function send(res: ServerResponse, response: Response, method: string | un
   for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) res.write(chunk);
   res.end();
 }
-
-const MAX_BODY_BYTES = 100_000; // forms are small
 
 const server = createServer(async (req, res) => {
   try {
@@ -171,8 +183,13 @@ const server = createServer(async (req, res) => {
       res.end(req.method === "HEAD" ? undefined : file.body);
       return;
     }
-    await send(res, await handle(toRequest(req), env), req.method);
+    await send(res, await handle(await toRequest(req), env), req.method);
   } catch (e) {
+    if (e instanceof TooLarge) {
+      res.writeHead(413, { "Content-Type": "text/plain", Connection: "close" });
+      res.end("Too large", () => req.destroy());
+      return;
+    }
     console.error(e);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "text/plain" });
     res.end("Something went wrong");

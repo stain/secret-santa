@@ -103,7 +103,7 @@ This document describes what the Secret Santa app protects, how, what the people
 
 ## Known limits and accepted risks
 
-- **Small groups reveal the Santa.** In a single circle your Santa is never you or your giftee. With 3 people everyone can work out who their Santa is; with 4, it's a coin toss. The minimum is 3; consider requiring 5, or warning the admin.
+- **In small groups the Santa can be worked out.** In a single circle your Santa is never you or your giftee, so with 3 people everyone could deduce who theirs is, and with 4 it's a coin toss. That's accepted by design: Secret Santa is about being kind to someone who doesn't quite expect it, not about keeping the giver hidden against someone trying to find out. The app keeps the draw out of sight (no participant can see anyone else's giftee), and the minimum group size stays at 3.
 - **Anyone with a participant's link has their page.** Links can end up in browser history, email archives, and email security scanners that open links (the app answers their `HEAD` requests but changes nothing on `GET`).
 - **One shared admin password**, with no lockout after failed attempts and no separate accounts. Anyone with it sees all groups, including email addresses and the draw.
 - **The family-friendly check judges whole sites** and lets links through if the DNS service can't be reached. Unsuitable products on general shops (such as Amazon) are left to the admin's review. Wish text isn't filtered.

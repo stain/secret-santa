@@ -1,0 +1,19 @@
+# Sets up, or updates, a Debian 13 server for Secret Santa:
+#   all updates installed (rebooting if the kernel needs it) and automatic
+#   security updates from then on; SSH hardening (keys only, optionally a
+#   separate admin user instead of root), fail2ban, a firewall, kernel network
+#   hardening; and the app as a Podman Quadlet container behind Caddy.
+# First build the image (anywhere with Podman or Docker):
+#   deploy/build-image.sh
+# then run from this directory, against the hosts in inventory.ini:
+#   ansible-playbook site.yml
+# It is safe to run again: that is also how to update. The image is uploaded
+# only when it has changed. Uses only ansible.builtin modules. The work is in
+# roles/santa; its defaults (defaults/main.yml) can be overridden in
+# the inventory.
+
+- name: Secret Santa server
+  hosts: santa
+  become: true
+  roles:
+    - santa

@@ -1,0 +1,599 @@
+---
+- name: Check this is Debian 13 and a domain is set
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Debian"
+      - ansible_distribution_major_version == "13"
+      - santa_domain is defined and santa_domain | length > 0
+    fail_msg: "Needs Debian 13 (trixie) and santa_domain set in the inventory."
+
+- name: Check the image has been built (deploy/build-image.sh)
+  ansible.builtin.stat:
+    path: "{{ santa_image_archive }}"
+  delegate_to: localhost
+  become: false
+  register: santa_local_image
+  failed_when: not santa_local_image.stat.exists
+
+# --- Packages and automatic updates ---
+
+- name: Install all available updates
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+    cache_valid_time: 3600
+
+# Earlier versions used Caddy; nginx replaces it (fully security-supported by
+# Debian, unlike Debian's Go-based Caddy). Removed first, to free ports 80/443.
+- name: Remove Caddy
+  ansible.builtin.apt:
+    name: caddy
+    state: absent
+    purge: true
+
+- name: Install packages
+  ansible.builtin.apt:
+    name: [podman, nginx, certbot, ssl-cert, nftables, fail2ban, apparmor, unattended-upgrades, apt-listchanges, needrestart, sqlite3]
+
+# The app works in UTC; the server should too (log times, the 04:30 reboot).
+- name: Time zone UTC
+  ansible.builtin.command: timedatectl set-timezone Etc/UTC
+  when: ansible_date_time.tz != "UTC"
+  changed_when: true
+
+- name: Default locale C.UTF-8
+  ansible.builtin.copy:
+    dest: /etc/default/locale
+    content: "LANG=C.UTF-8\n"
+    mode: "0644"
+
+- name: Check whether the running kernel is out of date
+  ansible.builtin.command: needrestart -b -k
+  register: santa_kernel_status
+  changed_when: false
+
+- name: Reboot into the updated kernel
+  ansible.builtin.reboot:
+    reboot_timeout: 900
+  when: "'NEEDRESTART-KSTA: 3' in santa_kernel_status.stdout"
+
+- name: Which time sync service is installed
+  ansible.builtin.package_facts:
+
+- name: Keep the clock right (needed for HTTPS certificates)
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+  when: "'chrony' not in ansible_facts.packages"
+
+- name: AppArmor and time sync running
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - apparmor
+    - "{{ 'chrony' if 'chrony' in ansible_facts.packages else 'systemd-timesyncd' }}"
+
+- name: Turn on daily automatic updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    mode: "0644"
+
+- name: Reboot at 04:30 UTC when an update needs it
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52secret-santa
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+    mode: "0644"
+
+- name: Restart services automatically after library updates
+  ansible.builtin.copy:
+    dest: /etc/needrestart/conf.d/50-secret-santa.conf
+    content: "$nrconf{restart} = 'a';\n"
+    mode: "0644"
+
+- name: Configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: [/etc/systemd/journald.conf.d, /etc/systemd/resolved.conf.d, /etc/needrestart/conf.d, /etc/containers/systemd]
+
+- name: Keep the journal small
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/50-secret-santa.conf
+    content: |
+      [Journal]
+      SystemMaxUse=200M
+    mode: "0644"
+  notify: Restart journald
+
+# --- A little swap as a safety margin on 1 GB servers ---
+
+- name: Swap file
+  ansible.builtin.shell: >-
+    fallocate -l {{ santa_swap_size }} /swapfile.new && chmod 600 /swapfile.new &&
+    mkswap /swapfile.new && mv /swapfile.new /swapfile
+  args:
+    creates: /swapfile
+
+- name: Swap on at boot
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "/swapfile none swap sw 0 0"
+
+- name: Swap on now
+  ansible.builtin.command: swapon --all
+  changed_when: false
+
+# --- Kernel network hardening ---
+
+- name: Kernel settings
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-secret-santa.conf
+    content: |
+      # Managed by Ansible (deploy/site.yml).
+      # Ignore ICMP redirects and source-routed packets; don't send redirects.
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv6.conf.all.accept_source_route = 0
+      # Loose reverse-path filtering: drops spoofed packets without
+      # breaking the container network.
+      net.ipv4.conf.all.rp_filter = 2
+      net.ipv4.conf.default.rp_filter = 2
+      net.ipv4.conf.all.log_martians = 1
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.tcp_syncookies = 1
+      # Hide kernel addresses and logs from unprivileged users.
+      kernel.kptr_restrict = 2
+      kernel.dmesg_restrict = 1
+      kernel.unprivileged_bpf_disabled = 1
+      net.core.bpf_jit_harden = 2
+      fs.protected_fifos = 2
+      fs.protected_regular = 2
+    mode: "0644"
+  notify: Apply kernel settings
+
+- name: Block kernel modules this server never needs
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/santa-blacklist.conf
+    content: |
+      # Managed by Ansible (deploy/site.yml). Rarely used network protocols
+      # (each has had security bugs) and removable storage.
+      install dccp /bin/false
+      install sctp /bin/false
+      install rds /bin/false
+      install tipc /bin/false
+      install usb-storage /bin/false
+      install firewire-core /bin/false
+    mode: "0644"
+
+# --- Name resolution: no local-network name services (LLMNR, mDNS) ---
+
+- name: Turn off LLMNR and multicast DNS in systemd-resolved
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/50-santa.conf
+    content: |
+      # Managed by Ansible (deploy/site.yml).
+      [Resolve]
+      LLMNR=no
+      MulticastDNS=no
+    mode: "0644"
+  when: "'systemd-resolved' in ansible_facts.packages"
+  notify: Restart systemd-resolved
+
+# --- SSH ---
+
+- name: Root's SSH keys
+  ansible.builtin.slurp:
+    src: /root/.ssh/authorized_keys
+  register: santa_root_keys
+  failed_when: false
+
+- name: Separate admin user with sudo
+  when: santa_admin_user | length > 0
+  block:
+    - name: Admin user
+      ansible.builtin.user:
+        name: "{{ santa_admin_user }}"
+        shell: /bin/bash
+        groups: [sudo]
+        append: true
+        password: "!"
+
+    - name: Admin user's .ssh directory
+      ansible.builtin.file:
+        path: "/home/{{ santa_admin_user }}/.ssh"
+        state: directory
+        owner: "{{ santa_admin_user }}"
+        group: "{{ santa_admin_user }}"
+        mode: "0700"
+
+    - name: Admin user's SSH keys (copied from root on the first run)
+      ansible.builtin.copy:
+        dest: "/home/{{ santa_admin_user }}/.ssh/authorized_keys"
+        content: "{{ santa_root_keys.content | b64decode }}"
+        owner: "{{ santa_admin_user }}"
+        group: "{{ santa_admin_user }}"
+        mode: "0600"
+        force: false
+      when: santa_root_keys.content is defined
+
+    - name: Admin user can use sudo without a password (it has none)
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/90-secret-santa
+        content: "{{ santa_admin_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        mode: "0440"
+        validate: visudo -cf %s
+
+- name: Check the admin user has SSH keys before turning root logins off
+  ansible.builtin.stat:
+    path: "/home/{{ santa_admin_user }}/.ssh/authorized_keys"
+  register: santa_admin_keys
+  when: santa_admin_user | length > 0
+
+# Named 01-… because sshd uses the first value it reads for each setting,
+# and cloud images often ship their own 50-cloud-init.conf.
+- name: SSH hardening
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/01-secret-santa.conf
+    content: |
+      # Managed by Ansible (deploy/site.yml).
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin {{ 'no' if (santa_admin_user | length > 0 and santa_admin_keys.stat.size | default(0) > 0) else 'prohibit-password' }}
+      MaxAuthTries 3
+      MaxSessions 2
+      LoginGraceTime 20
+      LogLevel VERBOSE
+      TCPKeepAlive no
+      X11Forwarding no
+      AllowAgentForwarding no
+      AllowTcpForwarding no
+      PermitTunnel no
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  when: santa_disable_ssh_passwords and santa_root_keys.content is defined and (santa_root_keys.content | b64decode | trim | length > 0)
+  notify: Reload ssh
+
+- name: Remove the old SSH settings file name
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/90-secret-santa.conf
+    state: absent
+  notify: Reload ssh
+
+- name: Fail2ban for SSH (journal and nftables)
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.d/secret-santa.local
+    content: |
+      # Managed by Ansible (deploy/site.yml).
+      [DEFAULT]
+      backend = systemd
+      banaction = nftables-multiport
+      banaction_allports = nftables-allports
+      bantime = 1h
+      findtime = 10m
+      maxretry = 5
+
+      [sshd]
+      enabled = true
+      port = {{ santa_ssh_port }}
+
+      # Visitors who keep hitting nginx's limits or probing the bare IP
+      # address (the log holds only address and status, kept one day).
+      [santa-nginx]
+      enabled = true
+      backend = auto
+      logpath = /var/log/nginx/santa-limits.log
+      port = http,https
+      maxretry = 50
+      findtime = 1m
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Fail2ban filter for nginx's limit log
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/filter.d/santa-nginx.conf
+    content: |
+      # Managed by Ansible (deploy/site.yml). Lines are "<address> <status>".
+      [Definition]
+      failregex = ^<HOST> (429|444)$
+      ignoreregex =
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Keep nginx's limit log for one day only
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/santa-nginx
+    content: |
+      # Managed by Ansible (deploy/site.yml). Holds visitors' IP addresses
+      # (only of those over the limits), so it is kept for one day.
+      /var/log/nginx/santa-limits.log {
+          daily
+          rotate 0
+          missingok
+          notifempty
+          create 0640 www-data adm
+          postrotate
+              invoke-rc.d nginx rotate >/dev/null 2>&1 || true
+          endscript
+      }
+    mode: "0644"
+
+- name: Nginx limit log exists (fail2ban won't start without it)
+  ansible.builtin.file:
+    path: /var/log/nginx/santa-limits.log
+    state: touch
+    owner: www-data
+    group: adm
+    mode: "0640"
+    access_time: preserve
+    modification_time: preserve
+
+- name: Fail2ban running
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    enabled: true
+    state: started
+
+# --- Firewall ---
+
+- name: Firewall rules
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    mode: "0755"
+    validate: /usr/sbin/nft -c -f %s
+  notify: Reload nftables
+
+- name: Firewall on at boot
+  ansible.builtin.systemd_service:
+    name: nftables
+    enabled: true
+    state: started
+
+# --- The app ---
+
+- name: Image ID on the server
+  ansible.builtin.command: podman image inspect --format "{{ '{{' }}.Id{{ '}}' }}" {{ santa_image }}
+  register: santa_server_image
+  changed_when: false
+  failed_when: false
+
+- name: Upload the image if it has changed
+  ansible.builtin.copy:
+    src: "{{ santa_image_archive }}"
+    dest: /var/tmp/secret-santa-image.tar.gz
+    mode: "0600"
+  when: santa_server_image.stdout != lookup('ansible.builtin.file', santa_image_id_file)
+
+# Runs whenever an uploaded file is waiting, so an interrupted run is finished
+# off next time. Must happen before the service starts.
+- name: Load the uploaded image
+  ansible.builtin.command: podman load --input /var/tmp/secret-santa-image.tar.gz
+  args:
+    removes: /var/tmp/secret-santa-image.tar.gz
+  notify: Restart app
+
+- name: Remove the uploaded file
+  ansible.builtin.file:
+    path: /var/tmp/secret-santa-image.tar.gz
+    state: absent
+
+# The front page, privacy notice and assets, served by nginx straight from
+# disk. Replaced only when the image's copy differs.
+- name: Static site from the image
+  ansible.builtin.shell: |
+    set -o errexit -o pipefail
+    tmp=$(mktemp -d)
+    trap 'podman rm --force santa-static-copy >/dev/null 2>&1; rm -rf "$tmp"' EXIT
+    podman create --name santa-static-copy {{ santa_image }} >/dev/null
+    podman cp santa-static-copy:/app/www "$tmp/www"
+    chmod -R u=rwX,go=rX "$tmp/www"
+    if ! diff -r "$tmp/www" /var/www/santa-static >/dev/null 2>&1; then
+      rm -rf /var/www/santa-static.old
+      [ -d /var/www/santa-static ] && mv /var/www/santa-static /var/www/santa-static.old
+      mv "$tmp/www" /var/www/santa-static
+      rm -rf /var/www/santa-static.old
+      echo updated
+    fi
+  args:
+    executable: /bin/bash
+  register: santa_static
+  changed_when: "'updated' in santa_static.stdout"
+
+# The database lives here, outside the image: deploying a new image never
+# touches it, and nothing in this playbook deletes it.
+- name: Data and backup directories (owned by the app's uid)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ santa_app_uid }}"
+    group: "{{ santa_app_uid }}"
+    mode: "0700"
+  loop: [/var/lib/secret-santa, /var/lib/secret-santa/backups]
+
+- name: Everything in them owned by the app's uid too
+  ansible.builtin.command: >-
+    find /var/lib/secret-santa ( ! -user {{ santa_app_uid }} -o ! -group {{ santa_app_uid }} )
+    -exec chown {{ santa_app_uid }}:{{ santa_app_uid }} {} + -print
+  register: santa_chown
+  changed_when: santa_chown.stdout | length > 0
+
+- name: Settings directory
+  ansible.builtin.file:
+    path: /etc/secret-santa
+    state: directory
+    mode: "0700"
+
+- name: Read the existing settings, if any
+  ansible.builtin.slurp:
+    src: /etc/secret-santa/secret-santa.env
+  register: santa_existing_env
+  failed_when: false
+
+- name: Keep the admin password, or make a new one
+  ansible.builtin.set_fact:
+    santa_admin_password: >-
+      {{ (santa_existing_env.content | default('') | b64decode | regex_search('(?m)^ADMIN_PASSWORD=(.+)$', '\1') | default([], true) | first)
+         | default(lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']), true) }}
+    santa_new_password: "{{ santa_existing_env.content is not defined }}"
+  no_log: true
+
+- name: Settings
+  ansible.builtin.template:
+    src: secret-santa.env.j2
+    dest: /etc/secret-santa/secret-santa.env
+    mode: "0600"
+  no_log: true
+  notify: Restart app
+
+- name: Container service (Podman Quadlet)
+  ansible.builtin.template:
+    src: secret-santa.container.j2
+    dest: /etc/containers/systemd/secret-santa.container
+    mode: "0644"
+  notify: Restart app
+
+- name: Generate the service from the Quadlet file
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: App running
+  ansible.builtin.systemd_service:
+    name: secret-santa
+    state: started
+
+# --- nginx and the HTTPS certificate ---
+
+- name: Remove nginx's default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Directory for Let's Encrypt's checks
+  ansible.builtin.file:
+    path: /var/www/letsencrypt
+    state: directory
+    mode: "0755"
+
+- name: Is there a certificate yet
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ santa_domain }}/fullchain.pem"
+  register: santa_cert
+
+- name: HTTPS once a certificate exists (self-signed on test VMs)
+  ansible.builtin.set_fact:
+    santa_https_ready: "{{ santa_tls_internal or santa_cert.stat.exists }}"
+
+- name: Security headers for the static files
+  ansible.builtin.template:
+    src: santa-headers.conf.j2
+    dest: /etc/nginx/snippets/santa-headers.conf
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Nginx configuration
+  ansible.builtin.template:
+    src: nginx-santa.conf.j2
+    dest: /etc/nginx/conf.d/santa.conf
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Check the nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Nginx running
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Apply pending restarts and reloads
+  ansible.builtin.meta: flush_handlers
+
+- name: Get the certificate from Let's Encrypt
+  ansible.builtin.command: >-
+    certbot certonly --webroot -w /var/www/letsencrypt -d {{ santa_domain }}
+    --non-interactive --agree-tos --key-type ecdsa
+    {{ '--email ' + santa_acme_email if santa_acme_email else '--register-unsafely-without-email' }}
+    {{ '--test-cert' if santa_acme_staging else '' }}
+  args:
+    creates: "/etc/letsencrypt/live/{{ santa_domain }}/fullchain.pem"
+  when: not santa_tls_internal
+
+# On the first run this turns HTTPS on; later runs write the same file (no change).
+- name: Is there a certificate now
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ santa_domain }}/fullchain.pem"
+  register: santa_cert_now
+
+- name: HTTPS if the certificate now exists
+  ansible.builtin.set_fact:
+    santa_https_ready: "{{ santa_tls_internal or santa_cert_now.stat.exists }}"
+
+- name: Nginx configuration, with HTTPS once possible
+  ansible.builtin.template:
+    src: nginx-santa.conf.j2
+    dest: /etc/nginx/conf.d/santa.conf
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Check the nginx configuration again
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Reload nginx when certificates are renewed
+  ansible.builtin.copy:
+    dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
+    content: |
+      #!/bin/sh
+      # Managed by Ansible (deploy/site.yml).
+      systemctl reload nginx
+    mode: "0755"
+  when: not santa_tls_internal
+
+- name: Automatic certificate renewal
+  ansible.builtin.systemd_service:
+    name: certbot.timer
+    enabled: true
+    state: started
+  when: not santa_tls_internal
+
+- name: Apply pending restarts before checking
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the app to answer
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8787/robots.txt
+  register: santa_health
+  retries: 20
+  delay: 3
+  until: santa_health.status == 200
+
+- name: List what is santa_listening on the network
+  ansible.builtin.command: ss -tulnpH
+  register: santa_listening
+  changed_when: false
+
+- name: Listening sockets (expect sshd, nginx on 80/443 and the app on 127.0.0.1:8787)
+  ansible.builtin.debug:
+    msg: "{{ santa_listening.stdout_lines }}"
+
+- name: New admin password (shown once; it is also in /etc/secret-santa/secret-santa.env)
+  ansible.builtin.debug:
+    msg: "Admin password for {{ santa_public_url }}/admin: {{ santa_admin_password }}"
+  when: santa_new_password | bool

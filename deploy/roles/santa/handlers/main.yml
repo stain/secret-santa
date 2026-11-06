@@ -1,0 +1,69 @@
+---
+- name: Apply kernel settings
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+
+- name: Restart systemd-resolved
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: restarted
+
+- name: Restart fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: restarted
+
+# Handlers run in the order listed here.
+- name: Restart journald
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted
+
+- name: Reload ssh
+  ansible.builtin.systemd_service:
+    name: ssh
+    state: reloaded
+
+- name: Reload nftables
+  ansible.builtin.systemd_service:
+    name: nftables
+    state: reloaded
+
+# Runs before "Restart app" (handlers run in the order listed): a dump of
+# the database before every restart, so a bad release can be rolled back.
+# If the dump fails or looks empty, this fails and the restart doesn't happen.
+# Runs as the app's uid so SQLite can't leave files the app can't write.
+- name: Back up the database before restarting
+  ansible.builtin.shell: |
+    set -o errexit -o pipefail
+    data=/var/lib/secret-santa
+    if [ -f "$data/santa.db" ]; then
+      out="$data/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+      trap 'rm -f "$out.tmp"' EXIT
+      setpriv --reuid={{ santa_app_uid }} --regid={{ santa_app_uid }} --clear-groups \
+        sqlite3 -bail "$data/santa.db" .dump | gzip > "$out.tmp"
+      gunzip -c "$out.tmp" | grep -q "CREATE TABLE participants" || { rm -f "$out.tmp"; echo "Backup looks empty" >&2; exit 1; }
+      chown {{ santa_app_uid }}:{{ santa_app_uid }} "$out.tmp"
+      mv "$out.tmp" "$out"
+    fi
+    find "$data/backups" -name 'pre-deploy-*.sql.gz' -mtime +7 -delete
+  args:
+    executable: /bin/bash
+  changed_when: true
+  listen: Restart app
+
+- name: Restart app
+  ansible.builtin.systemd_service:
+    name: secret-santa
+    state: restarted
+    daemon_reload: true
+
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded
+
+- name: Remove unused images
+  ansible.builtin.command: podman image prune --force
+  changed_when: true
+  listen: Restart app

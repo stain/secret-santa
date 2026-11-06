@@ -45,13 +45,46 @@ This document describes what the Secret Santa app protects, how, what the people
 - **Photo proxy:** visitors' browsers never contact shops, so shops and wishers can't see viewers' IP addresses or when they view. Photo addresses are signed (HMAC-SHA-256 with a key the app generates and keeps in the database), and only photos in current wishes or recent lookups are served. So outsiders can't use `/img` as a proxy, or to test whether a product was wished for.
 - **Cached lookups** obey the same host and port rules.
 
-### Server and container (`Dockerfile`, `compose.yaml`, `deploy/cloud-init.yaml`)
+### Server and container (`Dockerfile`, `deploy/`)
 
-- The app runs as an unprivileged user, in a read-only container with no Linux capabilities, `no-new-privileges`, and memory and process limits. Only `/data` is writable.
-- The app isn't published to the internet; only Caddy reaches it, over the Compose network. Caddy provides HTTPS with automatic certificates, and HSTS.
-- Request bodies are capped at 100 KB, with timeouts on requests and headers.
-- **Logs:** neither the app nor Caddy logs individual requests, so private links and IP addresses are never written to logs. Docker rotates container logs by size.
-- **The server:** SSH keys only, a firewall allowing only SSH, HTTP and HTTPS, and automatic security updates with reboots when needed.
+- **A VPS, not shared hosting:** the app gets its own operating system and kernel, so another customer's compromised website can't reach its database or secrets.
+- **The container:**
+  - runs as uid 2000, which no login user has;
+  - read-only, with no Linux capabilities and `no-new-privileges`;
+  - memory and process limits;
+  - only `/var/lib/secret-santa` (mounted as `/data`) is writable;
+  - never pulls images from a registry: it runs only the image Ansible uploaded.
+- **Not published to the internet:** the app listens on `127.0.0.1:8787`, and only nginx reaches it.
+- **Requests:** bodies are capped at 100 KB, with timeouts on requests and headers.
+- **Logs:** neither the app nor nginx logs individual requests, so private links are never written to logs. The only exception is nginx's limit log: the address and status of requests refused for going over the limits, kept one day, for fail2ban. The journal is capped at 200 MB.
+- **The server (Debian 13, set up by `deploy/site.yml`):**
+  - all updates on first setup, then automatic security updates with reboots when needed;
+  - SSH keys only, root login off once an admin user exists, at most 3 attempts, no forwarding, and fail2ban;
+  - a firewall allowing only SSH, HTTP and HTTPS in, with the local-network name services (LLMNR, mDNS) off;
+  - kernel network hardening, AppArmor, and time sync.
+
+  Tested end to end on a Debian 13 VM, including a Lynis audit (see `DEPLOYMENT.md`).
+- **HTTPS and the web server (nginx):**
+  - **Why nginx:** it's Debian's nginx with the system OpenSSL, fully covered by Debian security updates. Caddy was replaced because Debian's Caddy is a 2022 release and Debian's security support for Go programs is limited.
+  - **TLS:** TLS 1.2 and 1.3 with forward-secret ciphers only, no session tickets, HSTS, and no HTTP/3. A Let's Encrypt certificate is renewed automatically by certbot. A CAA record (see `DEPLOYMENT.md`) stops other authorities issuing for the name.
+  - **Other names refused:** requests for any other name, such as scanners using the bare IP address, get no answer (HTTP) or a refused handshake (HTTPS).
+  - **No compression,** because pages contain private links and compressing them over HTTPS invites BREACH-style attacks.
+  - **Not crawled:** `X-Robots-Tag: noindex, nofollow` alongside `robots.txt`.
+  - **Static files:** the front page, privacy notice and assets are served from disk with the same security headers as the app's pages, so they don't touch the app and keep working if it's down.
+- **Floods and bots** (a small server can't withstand a large network flood; only an upstream service could, and that would see private links):
+  - **Firewall:** at most about 30 new web connections a second per address, dropped in the kernel.
+  - **nginx, per address:** 10 requests a second with bursts, 30 a minute for `/admin`, 20 a minute for product lookups, and 20 connections at once.
+  - **nginx, in total:** at most 100 requests in progress at the app at once, from all visitors together.
+  - **Request size and timeouts:** short timeouts against slow clients, a 100 KB body limit, and only `GET`, `HEAD` and `POST`.
+  - **Repeat offenders:** blocked for an hour by fail2ban after 50 refused requests in a minute.
+  - **In the app:** bodies limited while being read (including chunked ones), admin logins throttled after 10 failures per address in 15 minutes, product lookups limited to 30 an hour per participant, and long input lines rejected before parsing.
+- **Crashes and failures** (tested on a Debian 13 VM):
+  - **Restarts:** systemd restarts the app 10 s after a crash (killed: back in 28 s), waits longer after each further failure up to 5 minutes, and never gives up (crash loop: retries after 34, 52, 90 and 169 s, then recovered by itself once fixed).
+  - **Memory:** the container is capped at 256 MB; a memory hog inside it was killed without affecting the server or the app.
+  - **Hangs:** a health check kills a hung app after 3 failed checks a minute apart (frozen: back in 197 s).
+  - **Full disk:** the server stayed usable and the journal small; the app came back by itself after space was freed.
+- **Server audit:** Lynis gives a hardening index of 71. Its two warnings were checked and are false alarms (Debian 13's security repository is configured; the iptables rules belong to Podman). Its suggestions were adopted where proportionate: stricter SSH logging, sessions and keep-alive settings, and blocked kernel modules. Skipped as out of proportion for a short-lived app with key-only logins: auditd, file-integrity and malware scanning, remote logging, login banners, and password ageing.
+- **Deployments keep the data:** it lives outside the image, and every deployment restart is preceded by a database dump that must succeed.
 
 ### Tests
 
@@ -60,10 +93,11 @@ This document describes what the Secret Santa app protects, how, what the people
 ## Requirements for whoever runs it
 
 - **A long random admin password:** `openssl rand -base64 24`. There's no lockout after failed logins, so the password's length is the protection.
-- **HTTPS only:** private links and the admin password must never travel unencrypted. Caddy handles this; don't expose port 8787.
-- **`.env` stays on the server**, readable only by its owner (`chmod 600 .env`), never committed.
-- **Don't turn on request or access logs** in Caddy, Docker or anywhere else in front of the app.
-- **Keep the server updated:** the cloud-init setup turns on automatic security updates. Rebuild the app (`docker compose up -d --build --pull always`) now and then to pick up new Node and Caddy images.
+- **HTTPS only:** private links and the admin password must never travel unencrypted. nginx handles this; don't expose port 8787.
+- **Settings and secrets stay on the server:** `/etc/secret-santa/secret-santa.env` is readable by root only, and is generated there by the playbook. `deploy/inventory.ini` holds no secrets and isn't committed.
+- **Don't turn on request or access logs** in nginx or anything else in front of the app (beyond the address-and-status limit log).
+- **Keep it updated:** the server patches itself, but Node.js inside the image is only updated when you rebuild. Run `deploy/build-image.sh` and the playbook every month or two while it's in use (see `DEPLOYMENT.md`).
+- **SSH keys:** use your own key for the server, not a key shared with other systems.
 - **Name the data controller** on the admin home page before sending links.
 - **Send links only to the person they belong to**, and delete the server when the season is over (see `DEPLOYMENT.md`).
 

@@ -8,12 +8,16 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
+COPY public ./public
 RUN npm run typecheck && npm run build
 
 FROM docker.io/library/node:24-slim
 ENV NODE_ENV=production PORT=8787 DATA_DIR=/data
 WORKDIR /app
-COPY --from=build /src/dist ./dist
+COPY --from=build /src/dist/server.mjs ./dist/server.mjs
+# The static site (front page, privacy notice, assets) that nginx serves;
+# copied out of the image by the Ansible playbook.
+COPY --from=build /src/dist/www ./www
 COPY public ./public
 COPY migrations ./migrations
 RUN mkdir -p /data && chown node:node /data

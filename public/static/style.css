@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url("/fonts/mountains-of-christmas-700.woff2") format("woff2");
+  src: url("/static/fonts/mountains-of-christmas-700.woff2") format("woff2");
 }
 
 :root {
@@ -62,6 +62,7 @@ body {
 }
 
 header.site, main, footer.site a { color: inherit; }
+footer.site .legal { font-family: system-ui, sans-serif; font-size: 0.8rem; margin-top: 0.3rem; }
 .notice-text h2 { margin-top: 1.2rem; font-size: 1.6rem; }
 .notice-text h2:first-child { margin-top: 0; }
 .your-data p { margin: 0.4rem 0; }

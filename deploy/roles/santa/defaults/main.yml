@@ -1,0 +1,23 @@
+---
+# Defaults: anything set in the inventory overrides these.
+santa_public_url: "https://{{ santa_domain }}"
+# santa_domain: required, set it in the inventory
+santa_image_archive: "{{ playbook_dir }}/../dist/secret-santa-image.tar.gz"
+santa_image_id_file: "{{ playbook_dir }}/../dist/secret-santa-image.id"
+santa_hosting_provider: ""
+santa_hosting_location: ""
+santa_backup_days: 7
+santa_ssh_port: 22
+santa_swap_size: 1G
+santa_tls_internal: false # true: self-signed certificate, for test VMs without a public name
+santa_acme_email: "" # optional; Let's Encrypt no longer sends expiry emails
+santa_acme_staging: false # true: Let's Encrypt's test service (untrusted certificates, no rate limits)
+santa_disable_ssh_passwords: true
+# Set to e.g. "santa-admin" to log in as that user (with sudo) instead of
+# root: the first run (as root) creates it with root's SSH keys and turns
+# off root logins; later runs use ansible_user=<that user>.
+santa_admin_user: ""
+santa_image: localhost/secret-santa:latest
+# The app runs as this uid/gid inside and outside its container, and owns
+# /var/lib/secret-santa. Kept clear of login users (who start at 1000).
+santa_app_uid: 2000

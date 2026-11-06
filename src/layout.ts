@@ -12,6 +12,9 @@ const SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
+  // Start fetching the heading font straight away, rather than after the
+  // stylesheet has arrived (nginx sends the same for the static pages).
+  Link: '</static/fonts/mountains-of-christmas-700.woff2>; rel=preload; as=font; type="font/woff2"; crossorigin',
   "Content-Security-Policy":
     "default-src 'none'; script-src 'self'; connect-src 'self'; " +
     // Fonts and product photos are served from this site (see images.ts), so
@@ -29,16 +32,20 @@ export function page(ctx: Ctx, title: string, body: Html, status = 200): Respons
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${title} · ${t.siteTitle}</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div class="snow" aria-hidden="true"></div>
-<header class="site"><a href="/">🎅 ${t.siteTitle} 🎄</a><div class="switchers">${languageSwitcher(ctx)}${currencySwitcher(ctx)}</div></header>
+<header class="site"><a href="/">🎅 ${t.siteTitle} 🎄</a><div class="switchers">${languageSwitcher(ctx)}${!ctx.static && currencySwitcher(ctx)}</div></header>
 <main>
 ${body}
 </main>
-<footer class="site">${t.footer} · <a href="/privacy">${t.privacy}</a></footer>
+<footer class="site">${t.footer} · <a href="/privacy">${t.privacy}</a>${(ctx.dataController || ctx.hosting) && html`
+<div class="legal">${[
+  ctx.dataController && `${t.footerController}: ${ctx.dataController}`,
+  ctx.hosting && `${t.footerHosting}: ${ctx.hosting}`,
+].filter(Boolean).join(" · ")}</div>`}</footer>
 </body>
 </html>`;
   return new Response(doc.value, { status, headers: SECURITY_HEADERS });

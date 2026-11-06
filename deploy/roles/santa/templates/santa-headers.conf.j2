@@ -1,0 +1,8 @@
+# Managed by Ansible (deploy/site.yml). Security headers for the static files
+# nginx serves itself; the same as the app sends for its own pages (layout.ts).
+add_header Strict-Transport-Security "max-age=31536000" always;
+add_header X-Robots-Tag "noindex, nofollow" always;
+add_header Content-Security-Policy "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" always;
+add_header Referrer-Policy "same-origin" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;

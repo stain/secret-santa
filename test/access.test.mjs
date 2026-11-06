@@ -15,11 +15,25 @@ const password =
 const admin = { Authorization: `Basic ${btoa(`admin:${password}`)}`, Origin: BASE };
 const form = (data) => ({ "Content-Type": "application/x-www-form-urlencoded", ...data });
 
+/**
+ * fetch, but when a web server's rate limit (not the app) answers 429, wait
+ * and try again: through nginx these tests must still see the app's answer.
+ * The app's own 429 (admin login throttling) is returned as it is.
+ */
+async function fetchPatiently(url, init) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || attempt >= 40) return res;
+    if ((await res.clone().text()).includes("Too many failed logins")) return res;
+    await new Promise((resolve) => setTimeout(resolve, 3100));
+  }
+}
+
 let group; // /admin/chains/<id>
 let people; // [{ id, key }]
 
 async function adminPost(path, body) {
-  return fetch(BASE + path, { method: "POST", headers: form(admin), body, redirect: "manual" });
+  return fetchPatiently(BASE + path, { method: "POST", headers: form(admin), body, redirect: "manual" });
 }
 
 before(async () => {
@@ -27,7 +41,7 @@ before(async () => {
   group = new URL(created.headers.get("Location"), BASE).pathname;
   await adminPost(`${group}/participants`, "people=" + encodeURIComponent("A, a@test.invalid\nB, b@test.invalid\nC, c@test.invalid"));
   await adminPost(`${group}/draw`, "x=1");
-  const html = await (await fetch(BASE + group, { headers: admin })).text();
+  const html = await (await fetchPatiently(BASE + group, { headers: admin })).text();
   people = [...html.matchAll(/\/p\/([0-9a-f-]{36})\?key=([A-Za-z0-9_-]+)/g)]
     .map((m) => ({ id: m[1], key: m[2] }))
     .filter((p, i, all) => all.findIndex((q) => q.id === p.id) === i);
@@ -38,7 +52,7 @@ after(async () => {
   if (group) await adminPost(`${group}/delete`, "x=1");
 });
 
-const status = async (path, init) => (await fetch(BASE + path, { redirect: "manual", ...init })).status;
+const status = async (path, init) => (await fetchPatiently(BASE + path, { redirect: "manual", ...init })).status;
 const probe = "url=" + encodeURIComponent("https://example.org/access-test");
 
 test("the right key opens the page, the lookup and the data download", async () => {
@@ -86,10 +100,10 @@ test("admin pages need the password", async () => {
 test("links to sites that aren't family-friendly are refused (needs network)", async () => {
   const [a] = people;
   const adult = encodeURIComponent("https://www.pornhub.com/");
-  const lookup = await fetch(`${BASE}/p/${a.id}/preview?key=${a.key}&url=${adult}`);
+  const lookup = await fetchPatiently(`${BASE}/p/${a.id}/preview?key=${a.key}&url=${adult}`);
   assert.equal(lookup.status, 422);
   assert.deepEqual(await lookup.json(), { blocked: true });
-  const save = await fetch(`${BASE}/p/${a.id}?key=${a.key}`, {
+  const save = await fetchPatiently(`${BASE}/p/${a.id}?key=${a.key}`, {
     method: "POST",
     headers: form({ Origin: BASE }),
     body: `url1=${adult}`,
@@ -110,7 +124,7 @@ test("language and currency links only redirect within the site", async () => {
 
 test("the photo proxy only serves addresses the app signed", async () => {
   const [a] = people;
-  const html = await (await fetch(`${BASE}/p/${a.id}?key=${a.key}`)).text();
+  const html = await (await fetchPatiently(`${BASE}/p/${a.id}?key=${a.key}`)).text();
   const src = html.match(/\/img\?u=[^"]+/)?.[0]?.replaceAll("&amp;", "&");
   if (src) {
     const unsigned = src.replace(/&s=[^&]+/, "");

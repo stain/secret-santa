@@ -1,166 +1,200 @@
 # Deployment
 
-How to run Secret Santa on a small rented server (VPS) for one season, at `santa.s11.no`, and take it down again afterwards. The rest of `s11.no` stays where it is: only one DNS record is added.
+How to run Secret Santa on a small rented server (VPS) at `santa.s11.no`, keep it updated, and take it down again. The rest of `s11.no` stays where it is: only one DNS record is added.
 
 ## How it runs
 
 ```
-Internet ──HTTPS──▶ Caddy (ports 80/443, automatic certificate) ──▶ app (Node.js, port 8787, not public)
-                                                                      └─ /data volume: santa.db + nightly SQL dumps
+Internet ──HTTPS──▶ nginx (Debian package; ports 80/443; Let's Encrypt certificate via certbot)
+                      ├──▶ /var/www/santa-static: front page, privacy notice, styles, script, fonts
+                      └──▶ 127.0.0.1:8787 ──▶ app container (Podman, run by systemd)
+                                                └─ /var/lib/secret-santa: santa.db + SQL dumps
 ```
 
-- Two containers, started by `docker compose` from `compose.yaml`: **Caddy** for HTTPS, and **the app**, built from the `Dockerfile`.
-- **Settings** are in `.env` on the server; `.env.example` shows what to fill in.
-- **Everything is on one server:** the database (SQLite), backups, and certificates are in Docker volumes.
-- **The app also:**
-  - applies database migrations at start-up,
-  - deletes groups the day after their end date (checked hourly),
-  - writes a nightly SQL dump.
-- **No service from the hosting provider is needed** beyond the server itself. Neither provider below has a simple managed container service (only Kubernetes, which is far too much for this), so it's **SSH plus Docker Compose**, set up with cloud-init.
+- **The server:** Debian 13 ("trixie"), supported until about 2028. Everything on it comes from Debian's own packages and gets Debian security updates automatically: Podman, nginx, certbot, nftables, fail2ban. (nginx rather than Caddy: Debian's Caddy is a 2022 release, and Debian's security support for Go programs like it is limited.)
+- **The app** is a container image (Node.js 24 LTS, supported until April 2028) that **you build elsewhere and upload**. The server needs no source code, git, npm or build tools. systemd runs the container through Podman "Quadlet" (`secret-santa.service`), as an unprivileged uid with a read-only filesystem.
+- **Static pages:** the front page and the privacy notice (in English, Spanish and Norwegian) and the styles, script and fonts are plain files, rendered when the image is built. The playbook copies them out of the image, and nginx serves them itself, picking the language from the `lang` cookie (set by the flags) or else the browser's preferences. They keep working even if the app is down.
+- **The data** lives in `/var/lib/secret-santa` on the server, **outside the image**. Deploying a new image never touches it, and nothing in the playbook deletes it. Before every restart caused by a deployment, the database is dumped to `backups/pre-deploy-<time>.sql.gz`; if that dump fails, the deployment stops before the restart.
+- **The app also:** applies database migrations at start-up (forward-only, each in a transaction), deletes groups within two days after their end date (the end date counts in full in every time zone), and writes a nightly SQL dump.
+- **If the app crashes, runs out of memory or hangs, systemd restarts it.** It waits 10 seconds, then longer after each further failure (up to 5 minutes), and never gives up, so it comes back by itself once the cause is gone. A health check every minute kills a hung app after 3 failures. All of this, and a full disk, was tested on the VM (see `SECURITY.md`).
+- **Everything is set up by Ansible** (`deploy/site.yml`, the `santa` role), run from your own machine over SSH. Running it again is how you update, and it only changes what differs. It was tested end to end on a Debian 13 VM: first setup, re-deployment with data kept, and an unchanged re-run that changed nothing.
 
 ## Choosing a provider
 
-For two months, a provider that bills **by the hour, with no minimum term** is best: create the server, delete it afterwards, and pay only for the hours in between. The app needs 1 virtual CPU, 1 GB of memory and a public IPv4 address. It runs on x86 or ARM.
+The app needs 1 vCPU, 1 GB of memory and a public IPv4 address; in testing it used 23 MB, and the whole server about 320 MB. **Shared "cPanel" web hosting is not suitable:** it can't run the container, all customers share one operating system, and its access logs would record private links. Use a VPS.
 
-| | **UpCloud** (recommended) | **Hetzner** |
-|---|---|---|
-| Company | Finland, founded 2011 | Germany, founded 1997 |
-| Locations | Helsinki, Stockholm, Frankfurt, Amsterdam, London, … | Germany (Nuremberg, Falkenstein), Helsinki |
-| Smallest suitable plan (approx., before VAT) | About €3–3.50 a month (1 GB) | About €4–6 a month including IPv4; ARM ("CAX") plans available |
-| Billing | **Prepaid balance**, used up hourly | Invoiced afterwards, hourly up to the monthly price |
-| **Spending cap** | **In effect, yes:** top up €10–15 once and leave automatic top-up off, and you can't be charged more | **No:** usage alerts only, which Hetzner says aren't a spending limit |
-| If you forget the server | It stops when the balance runs out (check their terms for exactly what happens at zero) | It keeps costing the monthly price until deleted |
-| Heavy traffic or abuse | Outgoing traffic free; past fair use, slowed rather than charged | Large allowance included |
-| Email sending | None included; outgoing port 25 blocked for new accounts | None included; outgoing ports 25 and 465 blocked for new servers |
-| Provider backups | "Simple Backup": daily +10% of server price (may be included on some plans), weekly +20% | 7 daily backups, +20% of server price; deleted with the server (per third-party reports) |
-| Energy | Says most of its data centres use renewable energy. It lists its Helsinki data centre (Telia's) as 100% renewable, mainly hydro; an older Telia brochure says that site feeds waste heat into Helsinki's district heating. | 100% renewable electricity (hydropower in Germany; renewables in Finland); reported power usage effectiveness (PUE) of about 1.12–1.14; waste heat used for its own buildings; not certified for energy or environmental management (ISO 50001 or 14001, or EMAS) |
-| Jurisdiction | EU-based company, EU data processing agreement | EU-based company, EU data processing agreement |
-| Gotchas | Servers are billed even when switched off: delete them. One user reported unused balance wasn't refunded. | Same "switched off still costs" rule. Some new accounts have been restricted since June 2026, and new accounts are sometimes asked for ID. |
+| | **UKNode** (XXS VPS) | **UpCloud** | **Hetzner** |
+|---|---|---|---|
+| Plan | 1 vCPU, 1 GiB, 15 GiB, IPv4 + IPv6 | 1 GB plans | 1–2 GB plans; ARM ("CAX") available |
+| Price (approx.) | £1.99/month (VAT unclear) | €3–3.50/month + VAT | €4–6/month + VAT |
+| Billing | Monthly, prepaid, cancel any time | Hourly, prepaid balance | Hourly up to monthly, invoiced |
+| Spending cap | Effectively the monthly price | Yes: the prepaid balance | No |
+| Location | Manchester, UK | EU (Helsinki etc.), London | Germany, Helsinki |
+| Company | UKNode Ltd (2024), UK; network from its sister company Cloud Nord Ltd | UpCloud, Finland (2011) | Hetzner, Germany (1997) |
+| Data processing agreement | UK GDPR terms with unfilled placeholders: ask for a completed copy | Standard EU | Standard EU |
+| Backups included | Daily, 7 days ("courtesy, no guarantee") | Optional, +10–20% | Optional, +20% |
+| Sustainability information | None published | Renewable claims; Helsinki heat reuse | 100% renewable, efficient data centres |
+| Support | Weekdays 09–17, critical issues 24/7 | 24/7 | Office hours plus emergencies |
 
-Prices, plans and policies change; the figures above come partly from third-party sources. Check the provider's own pages before choosing. Prices usually exclude VAT; for a Norwegian customer, expect 25% Norwegian VAT on top.
+Prices, plans and terms change, and some figures come from third-party sources: check the provider's own pages. Neither provider includes email sending, and none is needed (invitations go out through the admin page's `mailto:` links).
 
-**Why UpCloud:** the prepaid balance is a real spending cap, it's the cheapest for 1 GB, and it's an EU company with an EU data processing agreement. Hetzner is just as good technically if a hard cap doesn't matter to you.
+**Before choosing UKNode, ask them:** whether prices include VAT; which company you contract with (their terms say the IP addresses belong to Cloud Nord Ltd); for a completed, signed data processing agreement and an up-to-date subprocessor list; that Docker/Podman containers are allowed; and whether their automatic backups can be limited to 7 days (the privacy notice says so).
 
-**About email:** neither provider includes an email-sending service, and it isn't needed. Invitations go out through the admin page's `mailto:` links, from the organiser's own email account.
+**Order the server with:** Debian 13 (not CentOS, Astra or FreeBSD), the smallest plan, an SSH key rather than a root password if offered, and in the EU or UK.
 
-## Setting up (about 30 minutes)
+## What you need on your own machine
 
-### 1. Create the server
+- **Ansible** (`ansible-core` 2.16 or newer: `sudo apt install ansible-core` on Ubuntu 24.04 or later), and your SSH key for the server. Only built-in Ansible modules are used.
+- **Podman or Docker**, to build the image (`deploy/build-image.sh`). This can be a different machine from the one running Ansible: the playbook only needs the two files the script writes to `dist/`.
 
-1. Create an account at the provider. For UpCloud, add a one-off balance of €10–15 and leave automatic top-up **off**.
-2. Create a server:
-   - **Image:** Ubuntu 24.04 LTS.
-   - **Size:** the smallest plan with 1 GB of memory and a public IPv4 address (IPv6 as well, if offered).
-   - **Location:** in the EU, e.g. Helsinki.
-   - **SSH key:** add your public key.
-   - **Provider backups:** off, unless you want them (see [Backups](#backups)).
-   - **User data / cloud-init:** paste the contents of [`deploy/cloud-init.yaml`](deploy/cloud-init.yaml). It installs Docker and git, enables the firewall and automatic security updates, and turns off password logins.
-3. Note the server's IPv4 (and IPv6) address.
+## First deployment
 
-### 2. Point `santa.s11.no` at it
+1. **Point DNS at the server.** At the DNS provider for `s11.no`, add an `A` record for `santa` with the server's IPv4 address, and an `AAAA` record for its IPv6 address. A short time to live (300 s) makes it easy to remove later. certbot needs this to get the certificate. Also add a **CAA record**, so that only Let's Encrypt may issue certificates for the name: `santa CAA 0 issue "letsencrypt.org"`.
+2. **Check you can log in:** `ssh root@santa.s11.no`. If the provider only gave you a password, add your key first with `ssh-copy-id root@santa.s11.no`; the playbook turns password logins off.
+3. **Build the image:** `deploy/build-image.sh` (from the repository root). It writes `dist/secret-santa-image.tar.gz` and its ID.
+4. **Write the inventory:** `cp deploy/inventory.example.ini deploy/inventory.ini` and fill it in. It isn't committed. For example:
 
-At the DNS provider for `s11.no`, add an `A` record for `santa` with the IPv4 address, plus an `AAAA` record if the server has IPv6. Use a short time to live (e.g. 300 seconds) so the record can be removed quickly later. Nothing else in `s11.no` changes.
+   ```ini
+   [santa]
+   santa.s11.no ansible_user=root
 
-### 3. Install the app
+   [santa:vars]
+   santa_domain=santa.s11.no
+   santa_hosting_provider=UKNode Ltd
+   santa_hosting_location=Manchester, United Kingdom
+   santa_admin_user=santa-admin
+   ```
+
+   With `santa_admin_user` set, the first run creates that user with `sudo` and root's SSH keys, then turns root logins off. **Afterwards, change `ansible_user=root` to `ansible_user=santa-admin`.**
+5. **Run it:** `cd deploy && ansible-playbook site.yml`. On a fresh server it takes a few minutes. At the end it prints the generated **admin password** (only on the first run; it's also in `/etc/secret-santa/secret-santa.env` on the server) and what's listening on the network: `sshd`, nginx on 80/443, and the app on `127.0.0.1:8787` only.
+6. **Check it, then go live:**
+   1. Open `https://santa.s11.no/admin` and log in with any user name and the admin password.
+   2. Fill in the **data controller** (name and contact). The privacy notice and every participant's page show it.
+   3. Make a throwaway group, draw, open a private link, add a wish with a product link, check the photo and price, then delete the group.
+   4. Optionally, from your machine: `BASE_URL=https://santa.s11.no ADMIN_PASSWORD=… npm test`. It creates and deletes a temporary group.
+   5. Create the real groups, set each group's end date (default 31 January), and send the links.
+
+**What the playbook sets up on the server:**
+- **Updates:** all updates installed first (rebooting if the kernel was updated), then daily automatic security updates, with a reboot at 04:30 UTC when one needs it. `needrestart` restarts services after library updates.
+- **SSH:** keys only, root login off (once an admin user exists), at most 3 attempts, a 20-second login window, and no forwarding. Fail2ban bans repeated failures for an hour.
+- **Network:**
+  - a firewall (nftables) allowing only SSH, HTTP and HTTPS in;
+  - kernel network hardening (no ICMP redirects or source routing, loose reverse-path filtering);
+  - the local-network name services LLMNR and mDNS turned off.
+- **Also:**
+  - time zone UTC and locale `C.UTF-8`, like the app (dates are shown in UTC);
+  - AppArmor and time sync running;
+  - kernel modules for unused network protocols (DCCP, SCTP, RDS, TIPC) and for USB and FireWire storage blocked;
+  - the journal limited to 200 MB, and 1 GB of swap as a safety margin.
+- **nginx:**
+  - **HTTPS:** TLS 1.2 and 1.3 only, forward-secret ciphers, no session tickets, HSTS, and no HTTP/3. HTTP redirects to HTTPS.
+  - **Certificate:** obtained by certbot on the first run, renewed automatically by Debian's `certbot.timer`, which reloads nginx.
+  - **Limits per address:** 10 requests a second (more for short bursts), 30 a minute for `/admin`, 20 a minute for product lookups, and 20 connections at once. At most 100 requests from all visitors together reach the app at once.
+  - **Request size and timeouts:** short timeouts, a 100 KB body limit, and only `GET`, `HEAD` and `POST`.
+  - **Other names refused:** requests for any name other than `santa_domain` (such as scanners using the bare IP address) get no answer.
+  - **No compression** (pages contain private links: BREACH), and an `X-Robots-Tag: noindex` header besides `robots.txt`.
+  - **Logs:** **no access log** and only critical errors, so private links are never written to disk. The one exception is `/var/log/nginx/santa-limits.log`, which records just the address and status of requests refused for going over the limits or using the wrong name. It's kept for one day, and lets fail2ban block an address for an hour after 50 such requests in a minute.
+- **Firewall:** at most about 30 new web connections a second per address; anything beyond that is dropped before nginx sees it.
+- **The app container:** read-only, no Linux capabilities, `no-new-privileges`, 256 MB memory and 100 process limits, running as uid 2000, which no login user has. It's reachable only from the server itself, and never pulls images from a registry.
+
+## Updating
+
+**Everything is the same two commands**, now or in a year's time:
 
 ```sh
-ssh root@santa.s11.no
-cloud-init status --wait          # until setup has finished
-git clone https://github.com/stain/secret-santa.git /opt/secret-santa
-cd /opt/secret-santa
-cp .env.example .env && chmod 600 .env
-openssl rand -base64 24           # use this as ADMIN_PASSWORD
-nano .env                         # set ADMIN_PASSWORD, check DOMAIN, PUBLIC_URL and HOSTING_*
-docker compose up -d --build
-docker compose logs -f            # wait for "Secret Santa listening"; Caddy gets the certificate
+deploy/build-image.sh                        # new app version and/or latest Node.js 24 patch
+cd deploy && ansible-playbook site.yml       # uploads the image only if it changed
 ```
 
-If the repository is private, cloning needs read access: create an SSH key on the server (`ssh-keygen -t ed25519`), add its public key to the GitHub repository as a **read-only deploy key**, and clone `git@github.com:stain/secret-santa.git` instead.
+The playbook installs pending Debian updates, re-applies the configuration, and restarts the app only if the image or settings changed, after dumping the database. If nothing changed, it changes nothing.
 
-`HOSTING_PROVIDER` and `HOSTING_LOCATION` appear in the privacy notice, e.g. `UpCloud Ltd` and `Helsinki, Finland`.
+**When to rebuild:** Debian keeps the server itself patched automatically, but **Node.js inside the image is only updated when you rebuild.** Rebuild and redeploy every month or two while the app is in use, and before reusing it next season.
 
-### 4. Check it, then go live
+**In a year's time, also check:**
+- Debian 13 is still supported (until about mid-2028).
+- Node.js 24 is still supported (until April 2028). After that, change `node:24-slim` in the `Dockerfile` to the next even-numbered LTS release, then run `npm test`.
+- The dependencies: `npm outdated`, `npm audit`.
 
-1. Open `https://santa.s11.no/admin` and log in with any user name and `ADMIN_PASSWORD`.
-2. Fill in the **data controller** (name and contact). The privacy notice and every participant page show it.
-3. Make a throwaway group with three test addresses, draw, open a private link, add a wish with a product link, and check the photo and price appear. Then delete the group.
-4. Optionally, run the access tests against the live site from your own machine: `BASE_URL=https://santa.s11.no ADMIN_PASSWORD=… npm test`. They create and delete a temporary group.
-5. Create the real groups, set each group's end date (default 31 January), and send the links.
+**Settings:** change them in `inventory.ini` and run the playbook again. The admin password is kept between runs. To change it, edit `/etc/secret-santa/secret-santa.env` on the server and run `systemctl restart secret-santa`.
 
 ## Running it
 
-| Task | Command (in `/opt/secret-santa`) |
-|---|---|
-| See logs | `docker compose logs -f` (add `app` or `caddy` for one) |
-| Status | `docker compose ps` |
-| Deploy a new version | `git pull && docker compose up -d --build` |
-| Also update Node and Caddy images | `docker compose up -d --build --pull always` |
-| Restart | `docker compose restart` |
-| Stop | `docker compose down` (data stays in the volumes) |
+On the server (as root, or with `sudo`):
 
-- **Updates:** the server installs security updates every night, and reboots at 04:30 UTC when an update needs it. The containers start again by themselves.
-- **Logs:** both containers log to stdout/stderr, which Docker keeps, rotated by size (3 × 10 MB per container), so there's no logrotate to configure. Neither logs individual requests, so private links and IP addresses never end up in logs. Keep it that way.
+| Task | Command |
+|---|---|
+| App status / restart | `systemctl status secret-santa` / `systemctl restart secret-santa` |
+| App logs | `journalctl -u secret-santa -f` |
+| nginx status, errors | `systemctl status nginx`, `/var/log/nginx/santa-error.log` |
+| Certificate | `certbot certificates`; test renewal: `certbot renew --dry-run` |
+| Running containers, memory | `podman ps`, `podman stats --no-stream` |
+| Firewall, bans | `nft list ruleset`, `fail2ban-client status sshd`, `fail2ban-client status santa-nginx` |
+| What's listening | `ss -tulpn` |
+
+**Logs:** the app's go to the systemd journal, which is limited to 200 MB. Neither the app nor nginx logs individual requests, apart from the one-day limit log described above.
 
 ## Backups
 
-**Built in: nightly SQL dumps.** Every night the app writes `santa-YYYY-MM-DD.sql.gz`, a plain, compressed SQL dump, to the `data` volume. It keeps the last 7 (`BACKUP_DAYS`). This protects against mistakes, such as a group deleted by accident, but not against losing the server, because the dumps are on the same disk.
+- **Nightly:** the app writes a gzipped SQL dump, `santa-YYYY-MM-DD.sql.gz`, to `/var/lib/secret-santa/backups` and keeps 7 (`santa_backup_days`).
+- **Before each deployment restart:** `pre-deploy-<time>.sql.gz`, also kept 7 days.
+- **Off the server:** both of the above sit on the server's own disk. Copy the latest off now and then, from your machine:
 
-**Copying the latest one off the server** now and then covers that, and is plenty for two months. Run this on your own machine:
+  ```sh
+  ssh santa-admin@santa.s11.no 'sudo sh -c "cat \$(ls -t /var/lib/secret-santa/backups/*.sql.gz | head -1)"' > santa-latest.sql.gz
+  ```
+
+  Treat copies as personal data and delete them at the end of the season.
+- **Provider backups** (UKNode's daily backups, or optional ones elsewhere): check how long they're kept. The privacy notice says up to 7 days.
+
+**Restoring** a dump, on the server:
 
 ```sh
-ssh root@santa.s11.no 'cd /opt/secret-santa && docker compose exec -T app sh -c "cat /data/backups/\$(ls /data/backups | tail -1)"' > santa-latest.sql.gz
+gunzip -c /var/lib/secret-santa/backups/santa-2026-12-24.sql.gz | sqlite3 /tmp/restored.db
+sqlite3 /tmp/restored.db 'select name from chains'           # check it looks right
+systemctl stop secret-santa
+rm -f /var/lib/secret-santa/santa.db-wal /var/lib/secret-santa/santa.db-shm
+install -o 2000 -g 2000 -m 0644 /tmp/restored.db /var/lib/secret-santa/santa.db
+systemctl start secret-santa && rm /tmp/restored.db
 ```
 
-Treat copies as personal data: keep them private, and delete them when the season's data is deleted.
+## Trying the playbook first (optional)
 
-**Restoring** a dump, on the server in `/opt/secret-santa`:
+The `Vagrantfile` creates a throwaway Debian 13 VM and runs the same playbook against it, with a self-signed certificate at `https://localhost:8443`. It needs Vagrant, VirtualBox or libvirt, and Ansible on the same machine:
 
 ```sh
-gunzip -c santa-2026-12-24.sql.gz | sqlite3 restored.db     # check it: sqlite3 restored.db 'select name from chains'
-docker compose stop app
-# Write it into the data volume as the app's own user, replacing the old database:
-docker compose run --rm -T --no-deps --entrypoint sh app \
-  -c 'rm -f /data/santa.db-wal /data/santa.db-shm && cat > /data/santa.db' < restored.db
-docker compose start app && rm restored.db
+deploy/build-image.sh && vagrant up      # vagrant provision to run it again; vagrant destroy afterwards
 ```
-
-To get a dump from the server's backups first: `docker compose exec -T app cat /data/backups/santa-2026-12-24.sql.gz > santa-2026-12-24.sql.gz`.
-
-**Provider backups** (whole-disk copies, optional): UpCloud's daily backup costs about 10% extra, and Hetzner's 7-day backups about 20% extra. They let you restore the whole server after a disaster. They also keep copies of personal data outside the app's control, so if you turn them on, keep them to 7 days or fewer (the privacy notice says backups are kept up to 7 days) and check they're deleted with the server.
 
 ## Personal data (GDPR)
 
-The app is built to be run in line with the GDPR; whoever runs it is the **data controller**. Before going live:
-
-- **Name the data controller** (name and contact) on the admin home page; it's shown in the privacy notice at `/privacy` and on every participant's page.
-- **Set the hosting provider and location** in `.env` (`HOSTING_PROVIDER`, `HOSTING_LOCATION`); the privacy notice names them as the processor.
-- **Accept the provider's data processing agreement:** UpCloud and Hetzner both offer one in their terms or console. Choose an EU location.
-- **Keep backups to 7 days or fewer**, as the notice says.
-- **Answer participants' requests:**
-  - **correcting a name or email:** the admin page's "Edit";
-  - **removing someone:** "Remove", which deletes their wishes too;
-  - **unsuitable wishes:** "Review" then "Clear all their wishes";
-  - **their own data:** participants download it themselves from their page.
+Whoever runs the app is the **data controller**. Before going live:
+- **Name the data controller** (name and contact) on the admin home page. It's shown at the bottom of every interactive page (participants' pages and the admin pages). The privacy notice at `/privacy` is a static page, so it can't name them itself, and it points there.
+- **Set `santa_hosting_provider` and `santa_hosting_location`** in the inventory; they're shown at the bottom of interactive pages as the processor.
+- **Get the provider's data processing agreement.** For UKNode, a completed one (see above).
+- **Keep any provider backups to 7 days or fewer**, as the notice says.
+- **Answer participants' requests** on the admin page: "Edit" corrects a name or email, "Remove" deletes a person and their wishes, and "Review" then "Clear all their wishes" removes unsuitable wishes. Participants can download their own data from their page.
 
 What the app does by itself:
-- **Deletion:** removes each group, with all its participants and wishes, the day after its end date.
-- **Short-lived lookup data:** keeps product lookups and lookup records for one day.
-- **Nothing in the browser goes elsewhere:** no IP addresses are stored, and no analytics or third-party content is loaded.
-- **Hostnames only:** sends linked websites' names (never the full link) to Cloudflare's family-friendly DNS check, and nothing personal to the exchange-rate service.
+- **Deletion:** removes each group, with all its participants and wishes, within two days after its end date; keeps product lookups for one day.
+- **Nothing sent from the browser to others:** stores no IP addresses (except nginx's one-day record of visitors over the limits, which the privacy notice mentions) and loads no third-party content.
+- **Hostnames only:** sends only linked websites' names to Cloudflare's family-friendly DNS check.
 
 ## End of season: taking it down
 
-After the last group's end date has passed (31 January by default), the app has already deleted the groups' data. Then:
+After the last group's end date, the app has already deleted the groups' data. Then:
+1. **Cancel or delete the server** at the provider, with any provider backups or snapshots, and check billing has stopped. Deleting the server deletes the database and the dumps.
+2. **Remove the `santa` DNS records** from `s11.no`.
+3. **Delete any backup copies** you downloaded, and `deploy/inventory.ini` if it's no longer needed.
 
-1. Optionally, keep anonymous statistics (e.g. the number of groups) and nothing else.
-2. **Delete the server** at the provider, along with any snapshots or backups. That deletes the volumes, the dumps and the certificates. Check that billing has stopped.
-3. **Remove the `santa` DNS records** from `s11.no`.
-4. Delete any backup copies you downloaded.
-5. With UpCloud, any balance left over stays on the account (it may not be refundable).
+To run it again next season: order a server, re-point DNS, rebuild the image, run the playbook.
 
 ## Troubleshooting
 
-- **No certificate / site not reachable:** check the DNS record points at the server (`dig santa.s11.no`), that ports 80 and 443 are open (`ufw status`), and look at `docker compose logs caddy`.
-- **"ADMIN_PASSWORD must be set":** fill in `.env`, then `docker compose up -d`.
-- **Product lookups find nothing:** some shops (Amazon in particular) sometimes block automated requests; the wish is still saved. Check the server can reach the internet: `docker compose exec app node -e "fetch('https://example.org').then(r=>console.log(r.status))"`.
-- **Out of balance (UpCloud):** top up in the console. The data is on the server's disk, so as long as the server wasn't deleted, nothing is lost.
+- **No certificate or site not reachable:**
+  - DNS must point at the server: `dig santa.s11.no`.
+  - Ports 80/443 must be open in any provider firewall.
+  - Read the certbot output in the playbook run, and `/var/log/letsencrypt/letsencrypt.log`. Don't keep retrying blindly: Let's Encrypt rate-limits failed attempts. To experiment, set `santa_acme_staging=true` (Let's Encrypt's test service), then delete `/etc/letsencrypt/live/<domain>` and run again with it off.
+- **"Check the image has been built" fails:** run `deploy/build-image.sh` first.
+- **SSH refused after the first run:** root logins are off once `santa_admin_user` exists. Use `ansible_user=santa-admin` (and `ssh santa-admin@…`).
+- **App not starting:** `journalctl -u secret-santa` and `systemctl status secret-santa`. The settings are in `/etc/secret-santa/secret-santa.env`.
+- **Product lookups find nothing:** some shops (Amazon in particular) sometimes block automated requests; the wish is still saved.

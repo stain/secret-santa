@@ -11,7 +11,7 @@ export interface Chain {
   price_limit: number | null; // suggested budget, not enforced
   currency: string;
   organiser: string; // name and contact of whoever is responsible for the data
-  ends_on: string | null; // YYYY-MM-DD; all data is deleted the day after
+  ends_on: string | null; // YYYY-MM-DD; all data is deleted within two days after (UTC)
 }
 
 export interface Participant {
@@ -97,7 +97,9 @@ export async function setPrivacy(db: Database, id: string, organiser: string, en
  * rate-limit records older than a day. Run daily by the cron trigger.
  */
 export async function purgeExpired(db: Database, now = new Date()): Promise<number> {
-  const today = now.toISOString().slice(0, 10);
+  // Groups go once their end date is over everywhere: on the second day after
+  // it in UTC, so the end date still counts in full as far west as UTC-12.
+  const today = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const expired = "SELECT id FROM chains WHERE ends_on IS NOT NULL AND ends_on < ?";
   const results = await db.batch([

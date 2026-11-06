@@ -59,6 +59,8 @@ const en = {
   saveBudget: "Save budget",
   badBudget: "The budget must be a positive number.",
   privacy: "Privacy",
+  footerController: "Data controller",
+  footerHosting: "Hosted by",
   privacyTitle: "Privacy notice",
   yourData: "Your data",
   controller: "Data controller (responsible for your data):",
@@ -71,7 +73,7 @@ const en = {
   privacyLink: "How your data is handled",
   organiserHeading: "Group organiser and data deletion",
   organiserHelp:
-    "Optional: whom participants can contact about this group, if not the data controller. On the day after the end date, the group and all its data are deleted automatically.",
+    "Optional: whom participants can contact about this group, if not the data controller. Within two days after the end date, the group and all its data are deleted automatically.",
   organiserLabel: "Group organiser's name and email (optional)",
   endsOnLabel: "End date",
   controllerWarning:
@@ -196,6 +198,8 @@ const es: Dict = {
   saveBudget: "Guardar presupuesto",
   badBudget: "El presupuesto debe ser un número positivo.",
   privacy: "Privacidad",
+  footerController: "Responsable del tratamiento",
+  footerHosting: "Alojamiento",
   privacyTitle: "Aviso de privacidad",
   yourData: "Tus datos",
   controller: "Responsable del tratamiento (de tus datos):",
@@ -208,7 +212,7 @@ const es: Dict = {
   privacyLink: "Cómo se tratan tus datos",
   organiserHeading: "Organización del grupo y borrado de datos",
   organiserHelp:
-    "Opcional: a quién pueden dirigirse los participantes sobre este grupo, si no es el responsable del tratamiento. El día después de la fecha de fin, el grupo y todos sus datos se borran automáticamente.",
+    "Opcional: a quién pueden dirigirse los participantes sobre este grupo, si no es el responsable del tratamiento. En los dos días siguientes a la fecha de fin, el grupo y todos sus datos se borran automáticamente.",
   organiserLabel: "Nombre y correo de quien organiza el grupo (opcional)",
   endsOnLabel: "Fecha de fin",
   controllerWarning:
@@ -331,6 +335,8 @@ const nb: Dict = {
   saveBudget: "Lagre budsjett",
   badBudget: "Budsjettet må være et positivt tall.",
   privacy: "Personvern",
+  footerController: "Behandlingsansvarlig",
+  footerHosting: "Driftet hos",
   privacyTitle: "Personvernerklæring",
   yourData: "Dine data",
   controller: "Behandlingsansvarlig (ansvarlig for dataene dine):",
@@ -343,7 +349,7 @@ const nb: Dict = {
   privacyLink: "Slik behandles dataene dine",
   organiserHeading: "Gruppens arrangør og sletting av data",
   organiserHelp:
-    "Valgfritt: hvem deltakerne kan kontakte om denne gruppen, hvis det ikke er behandlingsansvarlig. Dagen etter sluttdatoen slettes gruppen og alle dataene automatisk.",
+    "Valgfritt: hvem deltakerne kan kontakte om denne gruppen, hvis det ikke er behandlingsansvarlig. Innen to dager etter sluttdatoen slettes gruppen og alle dataene automatisk.",
   organiserLabel: "Navn og e-post til gruppens arrangør (valgfritt)",
   endsOnLabel: "Sluttdato",
   controllerWarning:
@@ -434,6 +440,11 @@ export interface Ctx {
   t: Dict;
   url: URL;
   currency: Currency;
+  /** Rendering a static page (build time): no currency switcher, no per-site footer. */
+  static?: boolean;
+  /** For the footer of interactive pages: who is responsible, and who hosts it. */
+  dataController?: string;
+  hosting?: string;
 }
 
 const COOKIE = "lang";

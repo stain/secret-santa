@@ -104,7 +104,7 @@ function budgetLine(pc: PriceContext): Html | false {
   );
 }
 
-/** JSON for the wish form's live preview (public/wish-form.js). */
+/** JSON for the wish form's live preview (public/static/wish-form.js). */
 async function previewJson(ctx: Ctx, env: Env, me: Participant): Promise<Response> {
   const link = normaliseUrl(ctx.url.searchParams.get("url") ?? "");
   if (link && !(await isFamilyFriendly(new URL(link).hostname))) {
@@ -286,6 +286,6 @@ ${assignment}
   <p>${t.yourDataHelp}</p>
   <p><a href="${`/p/${me.id}/data?key=${encodeURIComponent(me.access_key)}`}" download>⬇️ ${t.downloadData}</a> · <a href="/privacy">${t.privacyLink}</a></p>
 </section>
-<script src="/wish-form.js" defer></script>`,
+<script src="/static/wish-form.js" defer></script>`,
   );
 }

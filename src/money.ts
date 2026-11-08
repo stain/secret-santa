@@ -88,14 +88,15 @@ export function convert(amount: number, from: string, to: string, rates: Rates):
 
 /**
  * Rounds a converted amount so it doesn't look more exact than it is: to the
- * largest step of 1, 2 or 5 times a power of ten that is at most a tenth of
- * the amount, but no finer than ROUNDING. 1000 kr becomes £80 and MX$2,000,
- * not £79 and MX$1,980; £4.99 still becomes 60 kr.
+ * largest step of 1, 2 or 5 times a power of ten that is at most a fifth of
+ * the amount (so within about 10%), but no finer than ROUNDING. 1000 kr
+ * becomes £80 and MX$2,000, not £79 and MX$1,980; £25 becomes 300 kr;
+ * £4.99 still becomes 60 kr.
  */
 function roundFor(amount: number, currency: Currency): number {
-  const tenth = amount / 10;
-  const power = 10 ** Math.floor(Math.log10(tenth));
-  const nice = [5, 2, 1].map((m) => m * power).find((s) => s <= tenth) ?? power;
+  const fifth = amount / 5;
+  const power = 10 ** Math.floor(Math.log10(fifth));
+  const nice = [5, 2, 1].map((m) => m * power).find((s) => s <= fifth) ?? power;
   const step = Math.max(ROUNDING[currency], nice);
   return Math.max(step, Math.round(amount / step) * step);
 }

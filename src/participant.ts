@@ -19,7 +19,7 @@ import {
 import { Html, html, redirect } from "./html";
 import { formatDate, type Ctx } from "./i18n";
 import { imageSources } from "./images";
-import { errorPage, page } from "./layout";
+import { asset, errorPage, page } from "./layout";
 import { budgetText, convert, getRates, isCurrency, priceText, type Rates } from "./money";
 import { cachedPreview } from "./preview";
 import { isFamilyFriendly } from "./safety";
@@ -296,6 +296,6 @@ ${assignment}
   <p>${t.yourDataHelp}</p>
   <p><a href="${`/p/${me.id}/data?key=${encodeURIComponent(me.access_key)}`}" download>⬇️ ${t.downloadData}</a> · <a href="/privacy">${t.privacyLink}</a></p>
 </section>
-<script src="/static/wish-form.js" defer></script>`,
+<script src="${asset("/static/wish-form.js")}" defer></script>`,
   );
 }

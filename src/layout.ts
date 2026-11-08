@@ -1,8 +1,27 @@
 // Page layout and response headers shared by every HTML page.
 
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { html, type Html } from "./html";
 import { languageSwitcher, type Ctx } from "./i18n";
 import { currencySwitcher } from "./money";
+
+// Browsers may keep /static/ files for a day (nginx: expires 1d), so pages
+// link to the stylesheet and script with a hash of their content: a changed
+// file is fetched straight away, an unchanged one stays cached.
+const PUBLIC_DIR = new URL("../public/", import.meta.url); // from src/ or dist/
+const versions = new Map<string, string>();
+
+/** "/static/style.css" → "/static/style.css?v=<hash of the file>". */
+export function asset(path: string): string {
+  let versioned = versions.get(path);
+  if (!versioned) {
+    const hash = createHash("sha256").update(readFileSync(new URL(path.slice(1), PUBLIC_DIR))).digest("hex");
+    versioned = `${path}?v=${hash.slice(0, 10)}`;
+    versions.set(path, versioned);
+  }
+  return versioned;
+}
 
 const SECURITY_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -33,7 +52,7 @@ export function page(ctx: Ctx, title: string, body: Html, status = 200): Respons
 <meta name="robots" content="noindex">
 <title>${title} · ${t.siteTitle}</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="${asset("/static/style.css")}">
 </head>
 <body>
 <div class="snow" aria-hidden="true"></div>

@@ -44,6 +44,7 @@ const en = {
   notDrawnText:
     "Santa's elves are still shuffling the names. Come back to this page later to find out whom you give a present to.",
   yourWishes: "Your wish list",
+  wishesLater: "You can change your list at any time: open this page again from the link in your email.",
   wishesHelp: `Up to ${MAX_WISHES} ideas. Paste a link to a product if you have one: we look up its name, photo and price.`,
   saved: "✨ Your wish list has been saved.",
   idea: (n: number) => `Idea ${n}`,
@@ -191,6 +192,7 @@ const es: Dict = {
   notDrawnText:
     "Los elfos de Papá Noel todavía están mezclando los nombres. Vuelve a esta página más tarde para saber a quién le haces un regalo.",
   yourWishes: "Tu lista de deseos",
+  wishesLater: "Puedes cambiar tu lista cuando quieras: vuelve a abrir esta página desde el enlace de tu correo.",
   wishesHelp: `Hasta ${MAX_WISHES} ideas. Si tienes un enlace a un producto, pégalo: buscaremos su nombre, foto y precio.`,
   saved: "✨ Se ha guardado tu lista de deseos.",
   idea: (n) => `Idea ${n}`,
@@ -336,6 +338,7 @@ const nb: Dict = {
   notDrawnText:
     "Nissens alver stokker fortsatt navnene. Kom tilbake hit senere for å se hvem du skal gi en gave til.",
   yourWishes: "Din ønskeliste",
+  wishesLater: "Du kan endre listen når som helst: åpne denne siden igjen fra lenken i e-posten din.",
   wishesHelp: `Opptil ${MAX_WISHES} ideer. Lim inn en lenke til et produkt hvis du har en, så henter vi navn, bilde og pris.`,
   saved: "✨ Ønskelisten din er lagret.",
   idea: (n) => `Idé ${n}`,

@@ -271,6 +271,7 @@ ${assignment}
   <h2>${t.yourWishes}</h2>
   ${url.searchParams.has("saved") && html`<p class="notice">${t.saved}</p>`}
   <p class="muted">${t.wishesHelp}</p>
+  <p class="muted">✏️ ${t.wishesLater}</p>
   <p class="policy">🎄 ${t.familyPolicy}</p>
   ${budgetLine(pc)}
   <form method="post" action="${participantPath(me)}" class="wish-form"

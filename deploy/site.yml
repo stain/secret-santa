@@ -2,7 +2,7 @@
 #   all updates installed (rebooting if the kernel needs it) and automatic
 #   security updates from then on; SSH hardening (keys only, optionally a
 #   separate admin user instead of root), fail2ban, a firewall, kernel network
-#   hardening; and the app as a Podman Quadlet container behind Caddy.
+#   hardening; and the app as a Podman Quadlet container behind nginx.
 # First build the image (anywhere with Podman or Docker):
 #   deploy/build-image.sh
 # then run from this directory, against the hosts in inventory.ini:

@@ -215,14 +215,19 @@ export async function handleParticipant(
   const gifteeWishes = giftee ? (wishes.get(giftee.id) ?? []) : [];
   const myWishes = wishes.get(me.id) ?? [];
 
+  // The giftee's name and wishes stay closed on every page load, so others
+  // looking at the screen (say, at the wish lists below) don't see them.
   const assignment = giftee
     ? html`<section class="card gift">
         <h2>${t.youAreSantaFor}</h2>
-        <p class="giftee">🎁 ${giftee.name} 🎁</p>
+        <details class="reveal">
+          <summary><span class="show">${t.revealGiftee}</span><span class="hide">${t.hideGiftee}</span></summary>
+          <p class="giftee">🎁 ${giftee.name} 🎁</p>
+          ${gifteeWishes.length
+            ? html`<p>${t.theirWishes(giftee.name)}</p><div class="wishbox">${renderWishes(pc, gifteeWishes)}</div>`
+            : html`<p class="muted">${t.noWishYet(giftee.name)}</p>`}
+        </details>
         ${budgetLine(pc)}
-        ${gifteeWishes.length
-          ? html`<p>${t.theirWishes(giftee.name)}</p><div class="wishbox">${renderWishes(pc, gifteeWishes)}</div>`
-          : html`<p class="muted">${t.noWishYet(giftee.name)}</p>`}
       </section>`
     : html`<section class="card gift">
         <h2>${t.notDrawnHeading}</h2>

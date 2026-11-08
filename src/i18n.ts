@@ -30,6 +30,8 @@ const en = {
   lead: (chain: string): Html =>
     html`Welcome to <strong>${chain}</strong>. Keep this page's link to yourself: it is your private key.`,
   youAreSantaFor: "You are Secret Santa for…",
+  revealGiftee: "🤫 Tap to see whom you give to",
+  hideGiftee: "Hide",
   theirWishes: (name: string) => `${name}'s wish list:`,
   noWishYet: (name: string) => `${name} hasn't added any wishes yet. Check back later!`,
   notDrawnHeading: "The draw hasn't happened yet",
@@ -169,6 +171,8 @@ const es: Dict = {
   lead: (chain) =>
     html`Te damos la bienvenida a <strong>${chain}</strong>. No compartas el enlace de esta página: es tu llave privada.`,
   youAreSantaFor: "Eres el Santa Secreto de…",
+  revealGiftee: "🤫 Toca para ver a quién le das el regalo",
+  hideGiftee: "Ocultar",
   theirWishes: (name) => `Lista de deseos de ${name}:`,
   noWishYet: (name) => `${name} todavía no ha añadido ningún deseo. ¡Vuelve más tarde!`,
   notDrawnHeading: "Todavía no se ha hecho el sorteo",
@@ -306,6 +310,8 @@ const nb: Dict = {
   lead: (chain) =>
     html`Velkommen til <strong>${chain}</strong>. Ikke del lenken til denne siden: den er din private nøkkel.`,
   youAreSantaFor: "Du er hemmelig nisse for …",
+  revealGiftee: "🤫 Trykk for å se hvem du gir til",
+  hideGiftee: "Skjul",
   theirWishes: (name) => `Ønskelisten til ${name}:`,
   noWishYet: (name) => `${name} har ikke lagt inn noen ønsker ennå. Kom tilbake senere!`,
   notDrawnHeading: "Trekningen har ikke skjedd ennå",

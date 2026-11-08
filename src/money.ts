@@ -11,7 +11,7 @@ export type Currency = (typeof CURRENCIES)[number];
 
 export const DEFAULT_CURRENCY: Record<Lang, Currency> = { en: "GBP", es: "MXN", nb: "NOK" };
 
-/** Converted amounts are rounded to these steps: £1, 10 kr, MX$10. */
+/** Converted amounts are rounded to at least these steps: £1, 10 kr, MX$10. */
 const ROUNDING: Record<Currency, number> = { GBP: 1, NOK: 10, MXN: 10 };
 const SYMBOLS: Record<Currency, string> = { GBP: "£", NOK: "kr", MXN: "$" };
 
@@ -86,8 +86,17 @@ export function convert(amount: number, from: string, to: string, rates: Rates):
   return a && b ? (amount / a) * b : null;
 }
 
+/**
+ * Rounds a converted amount so it doesn't look more exact than it is: to the
+ * largest step of 1, 2 or 5 times a power of ten that is at most a tenth of
+ * the amount, but no finer than ROUNDING. 1000 kr becomes £80 and MX$2,000,
+ * not £79 and MX$1,980; £4.99 still becomes 60 kr.
+ */
 function roundFor(amount: number, currency: Currency): number {
-  const step = ROUNDING[currency];
+  const tenth = amount / 10;
+  const power = 10 ** Math.floor(Math.log10(tenth));
+  const nice = [5, 2, 1].map((m) => m * power).find((s) => s <= tenth) ?? power;
+  const step = Math.max(ROUNDING[currency], nice);
   return Math.max(step, Math.round(amount / step) * step);
 }
 

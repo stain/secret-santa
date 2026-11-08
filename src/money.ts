@@ -6,19 +6,19 @@ import { html, type Html } from "./html";
 import { LOCALES, type Ctx, type Lang } from "./i18n";
 
 /** Currencies people can view prices in and set a budget in. */
-export const CURRENCIES = ["GBP", "NOK", "MXN"] as const;
+export const CURRENCIES = ["GBP", "NOK", "MXN", "USD"] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
 export const DEFAULT_CURRENCY: Record<Lang, Currency> = { en: "GBP", es: "MXN", nb: "NOK" };
 
-/** Converted amounts are rounded to at least these steps: £1, 10 kr, MX$10. */
-const ROUNDING: Record<Currency, number> = { GBP: 1, NOK: 10, MXN: 10 };
-const SYMBOLS: Record<Currency, string> = { GBP: "£", NOK: "kr", MXN: "$" };
+/** Converted amounts are rounded to at least these steps: £1, 10 kr, MX$10, US$1. */
+const ROUNDING: Record<Currency, number> = { GBP: 1, NOK: 10, MXN: 10, USD: 1 };
+const SYMBOLS: Record<Currency, string> = { GBP: "£", NOK: "kr", MXN: "$", USD: "$" };
 
 const RATES_API = "https://api.frankfurter.dev/v1/latest"; // ECB reference rates, base EUR
 const RATES_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // Used only if the rates have never been fetched (approximate, November 2026).
-const FALLBACK_RATES: Record<string, number> = { EUR: 1, GBP: 0.83, NOK: 10.4, MXN: 20.9 };
+const FALLBACK_RATES: Record<string, number> = { EUR: 1, GBP: 0.83, NOK: 10.4, MXN: 20.9, USD: 1.12 };
 
 /** Units of each currency per euro. */
 export type Rates = Map<string, number>;
@@ -129,7 +129,7 @@ export function priceText(ctx: Ctx, rates: Rates, price: number, currency: strin
   return converted ? `${exact} (${converted})` : exact;
 }
 
-/** The budget in its own currency, then rounded in the other two: "£25 (≈ 300 kr ≈ MX$600)". */
+/** The budget in its own currency, then rounded in the others: "£25 (≈ 300 kr ≈ MX$600 ≈ US$35)". */
 export function budgetText(ctx: Ctx, rates: Rates, limit: number, currency: Currency): string {
   const others = CURRENCIES.filter((c) => c !== currency)
     .map((c) => approx(ctx, rates, limit, currency, c))

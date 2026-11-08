@@ -56,7 +56,7 @@ export function page(ctx: Ctx, title: string, body: Html, status = 200): Respons
 </head>
 <body>
 <div class="snow" aria-hidden="true"></div>
-<header class="site"><a href="/">🎅 ${t.siteTitle} 🎄</a><div class="switchers">${languageSwitcher(ctx)}${!ctx.static && currencySwitcher(ctx)}</div></header>
+<header class="site"><span class="site-title">🎅 ${t.siteTitle} 🎄</span><div class="switchers">${languageSwitcher(ctx)}${!ctx.static && currencySwitcher(ctx)}</div></header>
 <main>
 ${body}
 </main>

@@ -77,7 +77,8 @@ header.site {
   border-image: repeating-linear-gradient(45deg, var(--red-dark) 0 12px, #fff 12px 24px) 6;
   box-shadow: 0 4px 12px #0006;
 }
-header.site > a {
+/* Not a link: the front page means nothing to someone with a private link. */
+header.site > .site-title {
   color: #fff;
   font: 700 2.2rem var(--font-festive);
   text-decoration: none;

@@ -6,19 +6,19 @@ import { html, type Html } from "./html";
 import { LOCALES, type Ctx, type Lang } from "./i18n";
 
 /** Currencies people can view prices in and set a budget in. */
-export const CURRENCIES = ["GBP", "NOK", "MXN"] as const;
+export const CURRENCIES = ["GBP", "NOK", "MXN", "USD"] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
 export const DEFAULT_CURRENCY: Record<Lang, Currency> = { en: "GBP", es: "MXN", nb: "NOK" };
 
-/** Converted amounts are rounded to these steps: £1, 10 kr, MX$10. */
-const ROUNDING: Record<Currency, number> = { GBP: 1, NOK: 10, MXN: 10 };
-const SYMBOLS: Record<Currency, string> = { GBP: "£", NOK: "kr", MXN: "$" };
+/** Converted amounts are rounded to at least these steps: £1, 10 kr, MX$10, US$1. */
+const ROUNDING: Record<Currency, number> = { GBP: 1, NOK: 10, MXN: 10, USD: 1 };
+const SYMBOLS: Record<Currency, string> = { GBP: "£", NOK: "kr", MXN: "$", USD: "$" };
 
 const RATES_API = "https://api.frankfurter.dev/v1/latest"; // ECB reference rates, base EUR
 const RATES_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // Used only if the rates have never been fetched (approximate, November 2026).
-const FALLBACK_RATES: Record<string, number> = { EUR: 1, GBP: 0.83, NOK: 10.4, MXN: 20.9 };
+const FALLBACK_RATES: Record<string, number> = { EUR: 1, GBP: 0.83, NOK: 10.4, MXN: 20.9, USD: 1.12 };
 
 /** Units of each currency per euro. */
 export type Rates = Map<string, number>;
@@ -86,8 +86,18 @@ export function convert(amount: number, from: string, to: string, rates: Rates):
   return a && b ? (amount / a) * b : null;
 }
 
+/**
+ * Rounds a converted amount so it doesn't look more exact than it is: to the
+ * largest step of 1, 2 or 5 times a power of ten that is at most a fifth of
+ * the amount (so within about 10%), but no finer than ROUNDING. 1000 kr
+ * becomes £80 and MX$2,000, not £79 and MX$1,980; £25 becomes 300 kr;
+ * £4.99 still becomes 60 kr.
+ */
 function roundFor(amount: number, currency: Currency): number {
-  const step = ROUNDING[currency];
+  const fifth = amount / 5;
+  const power = 10 ** Math.floor(Math.log10(fifth));
+  const nice = [5, 2, 1].map((m) => m * power).find((s) => s <= fifth) ?? power;
+  const step = Math.max(ROUNDING[currency], nice);
   return Math.max(step, Math.round(amount / step) * step);
 }
 
@@ -119,13 +129,13 @@ export function priceText(ctx: Ctx, rates: Rates, price: number, currency: strin
   return converted ? `${exact} (${converted})` : exact;
 }
 
-/** The budget in its own currency, then rounded in the other two: "£25 (≈ 330 kr · ≈ MX$640)". */
+/** The budget in its own currency, then rounded in the others: "£25 (≈ 300 kr ≈ MX$600 ≈ US$35)". */
 export function budgetText(ctx: Ctx, rates: Rates, limit: number, currency: Currency): string {
   const others = CURRENCIES.filter((c) => c !== currency)
     .map((c) => approx(ctx, rates, limit, currency, c))
     .filter(Boolean);
   const main = formatMoney(ctx.lang, limit, currency);
-  return others.length ? `${main} (${others.join(" · ")})` : main;
+  return others.length ? `${main} (${others.join(" ")})` : main;
 }
 
 /** Currency links for the page header, each returning to the current page. */

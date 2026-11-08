@@ -77,7 +77,8 @@ header.site {
   border-image: repeating-linear-gradient(45deg, var(--red-dark) 0 12px, #fff 12px 24px) 6;
   box-shadow: 0 4px 12px #0006;
 }
-header.site > a {
+/* Not a link: the front page means nothing to someone with a private link. */
+header.site > .site-title {
   color: #fff;
   font: 700 2.2rem var(--font-festive);
   text-decoration: none;
@@ -187,6 +188,27 @@ th { color: var(--green); }
 details summary { cursor: pointer; color: var(--green); }
 details input { margin-top: 0.3rem; font-size: 0.8rem; min-width: 16rem; }
 .spoiler { margin-top: 1rem; }
+/* The participant's giftee, hidden until they open it. */
+.reveal { margin: 0.5rem 0 1rem; }
+.reveal summary {
+  display: inline-block;
+  list-style: none;
+  padding: 0.6rem 1.2rem;
+  border: 2px dashed var(--gold);
+  border-radius: 8px;
+  font-weight: 700;
+}
+.reveal summary::-webkit-details-marker { display: none; }
+.reveal[open] summary { padding: 0.2rem 0.8rem; font-weight: 400; border-style: solid; }
+.reveal[open] .show, .reveal:not([open]) .hide { display: none; }
+a.check-again {
+  display: inline-block;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
 
 ul.wishes, ul.chains { list-style: none; padding: 0; margin: 0; }
 ul.wishes li, ul.chains li {

@@ -163,6 +163,16 @@ server {
         try_files $uri =404;
     }
 
+    # When the app is down or restarting (502) or too slow (504): a page in
+    # the visitor's language instead of nginx's own. The status is kept.
+    error_page 502 504 /unavailable.html;
+    location = /unavailable.html {
+        internal;
+        include snippets/santa-headers.conf;
+        add_header Cache-Control "no-store" always; # "expires" skips error statuses
+        try_files /$santa_lang/unavailable.html =502;
+    }
+
     # --- Everything else: the app ---
     # The client's own X-Forwarded-For is replaced, so the app's login
     # throttling sees the real address. At most 100 requests in progress at

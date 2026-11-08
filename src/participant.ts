@@ -19,7 +19,7 @@ import {
 import { Html, html, redirect } from "./html";
 import { formatDate, type Ctx } from "./i18n";
 import { imageSources } from "./images";
-import { errorPage, page } from "./layout";
+import { asset, errorPage, page } from "./layout";
 import { budgetText, convert, getRates, isCurrency, priceText, type Rates } from "./money";
 import { cachedPreview } from "./preview";
 import { isFamilyFriendly } from "./safety";
@@ -76,7 +76,11 @@ function isOverBudget({ rates, chain }: PriceContext, w: Wish): boolean {
   return inBudgetCurrency !== null && inBudgetCurrency > chain.price_limit;
 }
 
-/** A list of wish ideas; linked ones show as product cards with name, photo and price. */
+/**
+ * A list of wish ideas; linked ones show as product cards with photo and
+ * price. The person's own description comes first (it may say "something
+ * like this"), then the product name looked up from the link.
+ */
 function renderWishes(pc: PriceContext, wishes: Wish[]): Html {
   const { ctx, rates, img } = pc;
   return html`<ol class="ideas">${wishes.map((w) => {
@@ -84,8 +88,8 @@ function renderWishes(pc: PriceContext, wishes: Wish[]): Html {
     return html`<li class="product">
       ${w.image && html`<a href="${w.url}" ${LINK_OUT} tabindex="-1"><img src="${img(w.image)}" alt="" loading="lazy"></a>`}
       <div>
-        <a class="product-title" href="${w.url}" ${LINK_OUT}>${w.title || w.text || hostOf(w.url)}</a>
-        ${w.title && w.text && html`<div class="note">${w.text}</div>`}
+        <a class="product-title" href="${w.url}" ${LINK_OUT}>${w.text || w.title || hostOf(w.url)}</a>
+        ${w.text && w.title && html`<div class="note muted">${w.title}</div>`}
         ${w.price !== null && html`<div class="price">${priceText(ctx, rates, w.price, w.currency)}${
           isOverBudget(pc, w) && html` <span class="over">${ctx.t.overBudget}</span>`
         }</div>`}
@@ -215,18 +219,29 @@ export async function handleParticipant(
   const gifteeWishes = giftee ? (wishes.get(giftee.id) ?? []) : [];
   const myWishes = wishes.get(me.id) ?? [];
 
+  // Reloading always shows the latest (pages are never cached), but browsers
+  // inside apps such as Gmail may have no reload button. Used before the
+  // draw, under the giftee's wishes and under everyone's wishes.
+  const checkAgain = html`<p><a class="check-again" href="${participantPath(me)}">${t.checkAgain}</a></p>`;
+  // The giftee's name and wishes stay closed on every page load, so others
+  // looking at the screen (say, at the wish lists below) don't see them.
   const assignment = giftee
     ? html`<section class="card gift">
         <h2>${t.youAreSantaFor}</h2>
-        <p class="giftee">🎁 ${giftee.name} 🎁</p>
+        <details class="reveal">
+          <summary><span class="show">${t.revealGiftee}</span><span class="hide">${t.hideGiftee}</span></summary>
+          <p class="giftee">🎁 ${giftee.name} 🎁</p>
+          ${gifteeWishes.length
+            ? html`<p>${t.theirWishes(giftee.name)}</p><div class="wishbox">${renderWishes(pc, gifteeWishes)}</div>`
+            : html`<p class="muted">${t.noWishYet(giftee.name)}</p>`}
+          ${checkAgain}
+        </details>
         ${budgetLine(pc)}
-        ${gifteeWishes.length
-          ? html`<p>${t.theirWishes(giftee.name)}</p><div class="wishbox">${renderWishes(pc, gifteeWishes)}</div>`
-          : html`<p class="muted">${t.noWishYet(giftee.name)}</p>`}
       </section>`
     : html`<section class="card gift">
         <h2>${t.notDrawnHeading}</h2>
         <p>${t.notDrawnText}</p>
+        ${checkAgain}
         ${budgetLine(pc)}
       </section>`;
 
@@ -256,6 +271,7 @@ ${assignment}
   <h2>${t.yourWishes}</h2>
   ${url.searchParams.has("saved") && html`<p class="notice">${t.saved}</p>`}
   <p class="muted">${t.wishesHelp}</p>
+  <p class="muted">✏️ ${t.wishesLater}</p>
   <p class="policy">🎄 ${t.familyPolicy}</p>
   ${budgetLine(pc)}
   <form method="post" action="${participantPath(me)}" class="wish-form"
@@ -275,6 +291,7 @@ ${assignment}
         ${theirs.length ? renderWishes(pc, theirs) : html`<span class="muted">${t.noWishes}</span>`}</li>`;
     })}
   </ul>
+  ${checkAgain}
 </section>
 <section class="card your-data">
   <h2>${t.yourData}</h2>
@@ -286,6 +303,6 @@ ${assignment}
   <p>${t.yourDataHelp}</p>
   <p><a href="${`/p/${me.id}/data?key=${encodeURIComponent(me.access_key)}`}" download>⬇️ ${t.downloadData}</a> · <a href="/privacy">${t.privacyLink}</a></p>
 </section>
-<script src="/static/wish-form.js" defer></script>`,
+<script src="${asset("/static/wish-form.js")}" defer></script>`,
   );
 }

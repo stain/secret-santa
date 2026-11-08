@@ -24,5 +24,7 @@ COPY src/healthcheck.mjs ./healthcheck.mjs
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD ["node", "/app/healthcheck.mjs"]
+# The health check is set where the container runs (HealthCmd= in
+# deploy/roles/santa/templates/secret-santa.container.j2): Podman's default
+# OCI image format has no HEALTHCHECK, so one here would only be ignored.
 CMD ["node", "--disable-warning=ExperimentalWarning", "dist/server.mjs"]

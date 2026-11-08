@@ -23,6 +23,13 @@ const MAX_BYTES = 1_500_000;
 const MAX_REDIRECTS = 5;
 const TIMEOUT_MS = 6000;
 const MAX_TITLE_LENGTH = 300;
+/**
+ * Titles of bot-protection pages served (often with status 200) instead of
+ * the product: Akamai ("Challenge Validation"), Cloudflare, Imperva/Distil,
+ * Amazon and others. Their name and photo are no use as a preview.
+ */
+const ROBOT_CHECK_TITLE =
+  /^(challenge validation|just a moment\.*|attention required!?( \| cloudflare)?|access denied|robot check|are you a robot\??|pardon our interruption|verifying you are human.*|human verification|security check)$/i;
 
 /**
  * A quick first check on the name: refuse local-looking hosts and IP
@@ -248,8 +255,11 @@ export async function extractPreview(res: Response, base: string): Promise<Previ
         amazonImage ||= el.getAttribute("data-old-hires") || el.getAttribute("src") || "";
       },
     })
-    // Amazon's robot check, served instead of the product page.
-    .on('form[action*="validateCaptcha"]', { element: () => void (robotCheck = true) })
+    // Robot checks served instead of the product page: Amazon's, Akamai's,
+    // Cloudflare's, PerimeterX's and DataDome's (see also ROBOT_CHECK_TITLE).
+    .on('form[action*="validateCaptcha"], #sec-cpt-if, #challenge-form, #px-captcha, script[src*="captcha-delivery.com"]', {
+      element: () => void (robotCheck = true),
+    })
     // Pages with sizes or colours carry the selected variant's price here.
     .on("input#twister-plus-price-data-price", {
       element(el) {
@@ -299,7 +309,7 @@ export async function extractPreview(res: Response, base: string): Promise<Previ
   // Read through the page, giving up on very large ones.
   await scanner.scan(res.body!, MAX_BYTES);
 
-  if (robotCheck) return EMPTY;
+  if (robotCheck || ROBOT_CHECK_TITLE.test(clean(pageTitle))) return EMPTY;
 
   let product: Record<string, unknown> | undefined;
   for (const block of jsonLd) {

@@ -129,13 +129,13 @@ export function priceText(ctx: Ctx, rates: Rates, price: number, currency: strin
   return converted ? `${exact} (${converted})` : exact;
 }
 
-/** The budget in its own currency, then rounded in the other two: "£25 (≈ 330 kr · ≈ MX$640)". */
+/** The budget in its own currency, then rounded in the other two: "£25 (≈ 300 kr ≈ MX$600)". */
 export function budgetText(ctx: Ctx, rates: Rates, limit: number, currency: Currency): string {
   const others = CURRENCIES.filter((c) => c !== currency)
     .map((c) => approx(ctx, rates, limit, currency, c))
     .filter(Boolean);
   const main = formatMoney(ctx.lang, limit, currency);
-  return others.length ? `${main} (${others.join(" · ")})` : main;
+  return others.length ? `${main} (${others.join(" ")})` : main;
 }
 
 /** Currency links for the page header, each returning to the current page. */

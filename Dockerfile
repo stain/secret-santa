@@ -20,9 +20,9 @@ COPY --from=build /src/dist/server.mjs ./dist/server.mjs
 COPY --from=build /src/dist/www ./www
 COPY public ./public
 COPY migrations ./migrations
+COPY src/healthcheck.mjs ./healthcheck.mjs
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD node -e "fetch('http://127.0.0.1:8787/robots.txt').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD ["node", "/app/healthcheck.mjs"]
 CMD ["node", "--disable-warning=ExperimentalWarning", "dist/server.mjs"]

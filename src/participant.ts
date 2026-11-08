@@ -216,7 +216,8 @@ export async function handleParticipant(
   const myWishes = wishes.get(me.id) ?? [];
 
   // Reloading always shows the latest (pages are never cached), but browsers
-  // inside apps such as Gmail may have no reload button.
+  // inside apps such as Gmail may have no reload button. Used before the
+  // draw, under the giftee's wishes and under everyone's wishes.
   const checkAgain = html`<p><a class="check-again" href="${participantPath(me)}">${t.checkAgain}</a></p>`;
   // The giftee's name and wishes stay closed on every page load, so others
   // looking at the screen (say, at the wish lists below) don't see them.
@@ -285,6 +286,7 @@ ${assignment}
         ${theirs.length ? renderWishes(pc, theirs) : html`<span class="muted">${t.noWishes}</span>`}</li>`;
     })}
   </ul>
+  ${checkAgain}
 </section>
 <section class="card your-data">
   <h2>${t.yourData}</h2>

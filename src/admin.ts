@@ -259,7 +259,7 @@ ${!settings.controllerName && html`<p class="warning"><a href="/admin">${t.contr
           <td>${p.email}</td>
           <td>${wishes.get(p.id)?.length ?? 0}/${MAX_WISHES}
             ${(wishes.get(p.id)?.length ?? 0) > 0 && html`<details class="edit"><summary>${t.clearWishes}</summary>
-              <ol class="admin-wishes">${(wishes.get(p.id) ?? []).map((w) => html`<li>${w.title || w.text}${w.url && html` <span class="muted">(${new URL(w.url).hostname})</span>`}</li>`)}</ol>
+              <ol class="admin-wishes">${(wishes.get(p.id) ?? []).map((w) => html`<li>${w.text || w.title}${w.url && html` <span class="muted">(${new URL(w.url).hostname})</span>`}</li>`)}</ol>
               <form method="post" action="${base}/clear-wishes/${p.id}"><button class="small secondary" type="submit">${t.clearWishesConfirm}</button></form>
             </details>`}</td>
           <td><a href="${mailto(ctx, p, chain.name)}" target="_blank" rel="noopener noreferrer">${t.emailLink}</a>

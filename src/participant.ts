@@ -76,7 +76,11 @@ function isOverBudget({ rates, chain }: PriceContext, w: Wish): boolean {
   return inBudgetCurrency !== null && inBudgetCurrency > chain.price_limit;
 }
 
-/** A list of wish ideas; linked ones show as product cards with name, photo and price. */
+/**
+ * A list of wish ideas; linked ones show as product cards with photo and
+ * price. The person's own description comes first (it may say "something
+ * like this"), then the product name looked up from the link.
+ */
 function renderWishes(pc: PriceContext, wishes: Wish[]): Html {
   const { ctx, rates, img } = pc;
   return html`<ol class="ideas">${wishes.map((w) => {
@@ -84,8 +88,8 @@ function renderWishes(pc: PriceContext, wishes: Wish[]): Html {
     return html`<li class="product">
       ${w.image && html`<a href="${w.url}" ${LINK_OUT} tabindex="-1"><img src="${img(w.image)}" alt="" loading="lazy"></a>`}
       <div>
-        <a class="product-title" href="${w.url}" ${LINK_OUT}>${w.title || w.text || hostOf(w.url)}</a>
-        ${w.title && w.text && html`<div class="note">${w.text}</div>`}
+        <a class="product-title" href="${w.url}" ${LINK_OUT}>${w.text || w.title || hostOf(w.url)}</a>
+        ${w.text && w.title && html`<div class="note muted">${w.title}</div>`}
         ${w.price !== null && html`<div class="price">${priceText(ctx, rates, w.price, w.currency)}${
           isOverBudget(pc, w) && html` <span class="over">${ctx.t.overBudget}</span>`
         }</div>`}

@@ -200,6 +200,14 @@ details input { margin-top: 0.3rem; font-size: 0.8rem; min-width: 16rem; }
 .reveal summary::-webkit-details-marker { display: none; }
 .reveal[open] summary { padding: 0.2rem 0.8rem; font-weight: 400; border-style: solid; }
 .reveal[open] .show, .reveal:not([open]) .hide { display: none; }
+a.check-again {
+  display: inline-block;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
 
 ul.wishes, ul.chains { list-style: none; padding: 0; margin: 0; }
 ul.wishes li, ul.chains li {

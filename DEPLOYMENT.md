@@ -1,6 +1,6 @@
 # Deployment
 
-How to run Secret Santa on a small rented server (VPS) at `santa.s11.no`, keep it updated, and take it down again. The rest of `s11.no` stays where it is: only one DNS record is added.
+How to run Secret Santa on a small rented server (VPS) at `santa.example.com`, keep it updated, and take it down again. The rest of `example.com` stays where it is: only one DNS record is added.
 
 ## How it runs
 
@@ -49,29 +49,29 @@ Prices, plans and terms change, and some figures come from third-party sources: 
 
 ## First deployment
 
-1. **Point DNS at the server.** At the DNS provider for `s11.no`, add an `A` record for `santa` with the server's IPv4 address, and an `AAAA` record for its IPv6 address. A short time to live (300 s) makes it easy to remove later. certbot needs this to get the certificate. Also add a **CAA record**, so that only Let's Encrypt may issue certificates for the name: `santa CAA 0 issue "letsencrypt.org"`.
-2. **Check you can log in:** `ssh root@santa.s11.no`. If the provider only gave you a password, add your key first with `ssh-copy-id root@santa.s11.no`; the playbook turns password logins off.
+1. **Point DNS at the server.** At the DNS provider for `example.com`, add an `A` record for `santa` with the server's IPv4 address, and an `AAAA` record for its IPv6 address. A short time to live (300 s) makes it easy to remove later. certbot needs this to get the certificate. Also add a **CAA record**, so that only Let's Encrypt may issue certificates for the name: `santa CAA 0 issue "letsencrypt.org"`.
+2. **Check you can log in:** `ssh root@santa.example.com`. If the provider only gave you a password, add your key first with `ssh-copy-id root@santa.example.com`; the playbook turns password logins off.
 3. **Build the image:** `deploy/build-image.sh` (from the repository root). It writes `dist/secret-santa-image.tar.gz` and its ID.
 4. **Write the inventory:** `cp deploy/inventory.example.ini deploy/inventory.ini` and fill it in. It isn't committed. For example:
 
    ```ini
    [santa]
-   santa.s11.no ansible_user=root
+   santa.example.com ansible_user=root
 
    [santa:vars]
-   santa_domain=santa.s11.no
+   santa_domain=santa.example.com
    santa_hosting_provider=UKNode Ltd
    santa_hosting_location=Manchester, United Kingdom
-   santa_admin_user=santa-admin
+   santa_admin_user=mrsanta
    ```
 
    With `santa_admin_user` set, the first run creates that user with `sudo` and root's SSH keys, then turns root logins off. **Afterwards, change `ansible_user=root` to `ansible_user=santa-admin`.**
 5. **Run it:** `cd deploy && ansible-playbook site.yml`. On a fresh server it takes a few minutes. At the end it prints the generated **admin password** (only on the first run; it's also in `/etc/secret-santa/secret-santa.env` on the server) and what's listening on the network: `sshd`, nginx on 80/443, and the app on `127.0.0.1:8787` only.
 6. **Check it, then go live:**
-   1. Open `https://santa.s11.no/admin` and log in with any user name and the admin password.
+   1. Open `https://santa.example.com/admin` and log in with any user name and the admin password.
    2. Fill in the **data controller** (name and contact). The privacy notice and every participant's page show it.
    3. Make a throwaway group, draw, open a private link, add a wish with a product link, check the photo and price, then delete the group.
-   4. Optionally, from your machine: `BASE_URL=https://santa.s11.no ADMIN_PASSWORD=… npm test`. It creates and deletes a temporary group.
+   4. Optionally, from your machine: `BASE_URL=https://santa.example.com ADMIN_PASSWORD=… npm test`. It creates and deletes a temporary group.
    5. Create the real groups, set each group's end date (default 31 January), and send the links.
 
 **What the playbook sets up on the server:**
@@ -140,7 +140,7 @@ On the server (as root, or with `sudo`):
 - **Off the server:** both of the above sit on the server's own disk. Copy the latest off now and then, from your machine:
 
   ```sh
-  ssh santa-admin@santa.s11.no 'sudo sh -c "cat \$(ls -t /var/lib/secret-santa/backups/*.sql.gz | head -1)"' > santa-latest.sql.gz
+  ssh santa-admin@santa.example.com 'sudo sh -c "cat \$(ls -t /var/lib/secret-santa/backups/*.sql.gz | head -1)"' > santa-latest.sql.gz
   ```
 
   Treat copies as personal data and delete them at the end of the season.
@@ -183,7 +183,7 @@ What the app does by itself:
 
 After the last group's end date, the app has already deleted the groups' data. Then:
 1. **Cancel or delete the server** at the provider, with any provider backups or snapshots, and check billing has stopped. Deleting the server deletes the database and the dumps.
-2. **Remove the `santa` DNS records** from `s11.no`.
+2. **Remove the `santa` DNS records** from `example.com`.
 3. **Delete any backup copies** you downloaded, and `deploy/inventory.ini` if it's no longer needed.
 
 To run it again next season: order a server, re-point DNS, rebuild the image, run the playbook.
@@ -191,7 +191,7 @@ To run it again next season: order a server, re-point DNS, rebuild the image, ru
 ## Troubleshooting
 
 - **No certificate or site not reachable:**
-  - DNS must point at the server: `dig santa.s11.no`.
+  - DNS must point at the server: `dig santa.example.com`.
   - Ports 80/443 must be open in any provider firewall.
   - Read the certbot output in the playbook run, and `/var/log/letsencrypt/letsencrypt.log`. Don't keep retrying blindly: Let's Encrypt rate-limits failed attempts. To experiment, set `santa_acme_staging=true` (Let's Encrypt's test service), then delete `/etc/letsencrypt/live/<domain>` and run again with it off.
 - **"Check the image has been built" fails:** run `deploy/build-image.sh` first.

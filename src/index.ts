@@ -27,6 +27,25 @@ export function homePage(ctx: Ctx): Response {
   );
 }
 
+/**
+ * Shown by nginx when the app is down, restarting or too slow (502/504).
+ * Only rendered as a static file per language (render-static.ts). The link
+ * has an empty address, which reloads whatever page the visitor asked for.
+ */
+export function unavailablePage(ctx: Ctx): Response {
+  const { t } = ctx;
+  return page(
+    ctx,
+    t.unavailableTitle,
+    html`<section class="card welcome">
+  <h1>${t.unavailableHeading}</h1>
+  <p>${t.unavailableText}</p>
+  <p><a class="check-again" href="">${t.tryAgain}</a></p>
+  <p class="muted">${t.unavailableSaving}</p>
+</section>`,
+  );
+}
+
 export async function handle(request: Request, env: Env): Promise<Response> {
   // HEAD (used by some email link scanners) gets the GET response's headers.
   if (request.method === "HEAD") {

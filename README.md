@@ -3,6 +3,7 @@
 A small Secret Santa web app: Node.js with an SQLite database, run as a Podman container on Debian behind nginx, deployed with Ansible. The front page, privacy notice and assets are static files served by nginx.
 
 - An admin creates one or more **groups** and adds people (name and email) to each.
+- **Invitation links** (optional): the admin can give a group's organiser an **organiser's link** (`/o/<uuid>?key=…`) to add people, send links and draw names without the admin password. A **join link** (`/j/<uuid>?key=…`), shared in a group chat, lets people add themselves until a cut-off date (at the latest 24 December; names can only be drawn once it has passed), and takes them straight to their private page. It warns about names already on the list and never hands out an existing person's link.
 - **Drawing names** shuffles a group into one circle: A gives to B, B gives to C, and the last person gives to A. A redraw always gives a different circle, and nobody's link changes.
 - Each person gets a **private link**, `/p/<uuid>?key=<secret>`. The secret key means nobody can open someone else's page by changing the UUID. The admin page has a `mailto:` link for each person, with the message already written, so the organiser emails each link from their own email program. The app itself sends no email.
 - On their page, people see whom they give to and that person's wishes, write up to 3 wish ideas of their own, and see everyone's wishes. They never see who gives to them.
@@ -21,7 +22,8 @@ Pages are rendered on the server with plain HTML forms. One small script (`publi
 |---|---|
 | `src/server.ts` | Node.js HTTP server: static files, migrations, daily deletion job and backups |
 | `src/index.ts` | Routing for the dynamic pages |
-| `src/admin.ts` | Admin pages (`/admin`, HTTP Basic auth) |
+| `src/admin.ts` | Admin pages (`/admin`, HTTP Basic auth) and the organiser's page for a group (`/o/<uuid>?key=…`) |
+| `src/join.ts` | Join link for a group (`/j/<uuid>?key=…`) |
 | `src/participant.ts` | Private participant page (`/p/<uuid>?key=…`), product lookup and data download |
 | `src/db.ts` | All database queries, including the draw and deletion of expired groups |
 | `src/sqlite.ts` | Small wrapper over Node's built-in SQLite |

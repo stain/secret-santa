@@ -32,7 +32,7 @@ const HOSTING: Record<Lang, Html> = {
 const REST: Record<Lang, (host: Html) => Html> = {
   en: (host) => html`<h2>What is stored</h2>
 <ul>
-  <li>Your name and email address, entered by the data controller.</li>
+  <li>Your name and email address, entered by the data controller or your group's organiser, or by you if you joined with your group's join link.</li>
   <li>The wish ideas you write, including any links, and the product name, photo address and price looked up from those links.</li>
   <li>Whom you give a present to.</li>
   <li>For one day, when you looked up product links, to limit how many lookups can be made.</li>
@@ -48,13 +48,14 @@ const REST: Record<Lang, (host: Html) => Html> = {
   <li>Everyone in your group sees your name and your wishes.</li>
   <li>Only the person who gives you a present learns that they give to you.</li>
   <li>The data controller can see all of the group's data, including email addresses and the draw.</li>
+  <li>Your group's organiser, if the data controller gave them an organiser's link, can see the group's names, email addresses, wishes and private links, so that they can send people their links. Their page doesn't show the draw.</li>
 </ul>
 
 <h2>Who else handles it</h2>
 <ul>
   ${host}
   <li>To keep links family-friendly, the names of linked websites (not the full links) are checked with Cloudflare's "1.1.1.1 for Families" service.</li>
-  <li>The data controller emails you your private link from their own email account, so their email provider also has your address and a copy of that message. The app itself sends no email.</li>
+  <li>The data controller or your group's organiser emails you your private link from their own email account, so their email provider also has your address and a copy of that message. If you joined with the join link, you got your link straight away, and nobody needs to email it. The app itself sends no email.</li>
   <li>Product links you enter are fetched by the app's server, not your browser, and product photos are passed on by the server, so shops never see your visit.</li>
   <li>Exchange rates come from the European Central Bank (via frankfurter.dev); no personal data is sent.</li>
 </ul>
@@ -76,7 +77,7 @@ const REST: Record<Lang, (host: Html) => Html> = {
 
   es: (host) => html`<h2>Qué se guarda</h2>
 <ul>
-  <li>Tu nombre y tu dirección de correo, introducidos por el responsable del tratamiento.</li>
+  <li>Tu nombre y tu dirección de correo, introducidos por el responsable del tratamiento o por quien organiza tu grupo, o por ti si te uniste con el enlace para unirse de tu grupo.</li>
   <li>Las ideas de regalo que escribes, con sus enlaces, y el nombre, la dirección de la foto y el precio del producto obtenidos de esos enlaces.</li>
   <li>A quién le haces un regalo.</li>
   <li>Durante un día, cuándo buscaste enlaces de productos, para limitar el número de búsquedas.</li>
@@ -92,13 +93,14 @@ const REST: Record<Lang, (host: Html) => Html> = {
   <li>Todas las personas de tu grupo ven tu nombre y tus deseos.</li>
   <li>Solo quien te hace un regalo sabe que te lo hace a ti.</li>
   <li>El responsable del tratamiento puede ver todos los datos del grupo, incluidos los correos y el sorteo.</li>
+  <li>Quien organiza tu grupo, si el responsable del tratamiento le dio un enlace para quien organiza, puede ver los nombres, correos, deseos y enlaces privados del grupo, para poder enviar a cada persona su enlace. Su página no muestra el sorteo.</li>
 </ul>
 
 <h2>Quién más los trata</h2>
 <ul>
   ${host}
   <li>Para que los enlaces sean aptos para toda la familia, el nombre de los sitios enlazados (no el enlace completo) se comprueba con el servicio «1.1.1.1 for Families» de Cloudflare.</li>
-  <li>El responsable del tratamiento te envía tu enlace privado desde su propia cuenta de correo, así que su proveedor de correo también tiene tu dirección y una copia de ese mensaje. La aplicación no envía correos.</li>
+  <li>El responsable del tratamiento o quien organiza tu grupo te envía tu enlace privado desde su propia cuenta de correo, así que su proveedor de correo también tiene tu dirección y una copia de ese mensaje. Si te uniste con el enlace para unirse, recibiste tu enlace al momento y nadie tiene que enviártelo. La aplicación no envía correos.</li>
   <li>Los enlaces de productos que escribes los consulta el servidor de la aplicación, no tu navegador, y las fotos de los productos también pasan por el servidor, así que las tiendas nunca ven tu visita.</li>
   <li>Los tipos de cambio vienen del Banco Central Europeo (a través de frankfurter.dev); no se envía ningún dato personal.</li>
 </ul>
@@ -120,7 +122,7 @@ const REST: Record<Lang, (host: Html) => Html> = {
 
   nb: (host) => html`<h2>Hva som lagres</h2>
 <ul>
-  <li>Navnet og e-postadressen din, lagt inn av behandlingsansvarlig.</li>
+  <li>Navnet og e-postadressen din, lagt inn av behandlingsansvarlig eller gruppens arrangør, eller av deg selv hvis du meldte deg på med gruppens påmeldingslenke.</li>
   <li>Ønskene du skriver, med eventuelle lenker, og produktnavn, bildeadresse og pris hentet fra disse lenkene.</li>
   <li>Hvem du skal gi en gave til.</li>
   <li>I ett døgn: når du slo opp produktlenker, for å begrense antall oppslag.</li>
@@ -136,13 +138,14 @@ const REST: Record<Lang, (host: Html) => Html> = {
   <li>Alle i gruppen din ser navnet ditt og ønskene dine.</li>
   <li>Bare den som skal gi deg en gave, vet at det er deg de gir til.</li>
   <li>Behandlingsansvarlig kan se alle data i gruppen, også e-postadresser og trekningen.</li>
+  <li>Gruppens arrangør, hvis behandlingsansvarlig har gitt dem en lenke for arrangøren, kan se gruppens navn, e-postadresser, ønsker og private lenker, slik at de kan sende folk lenkene deres. Siden deres viser ikke trekningen.</li>
 </ul>
 
 <h2>Hvem andre som behandler dem</h2>
 <ul>
   ${host}
   <li>For at lenker skal være familievennlige, sjekkes navnet på nettstedene det lenkes til (ikke hele lenken) med Cloudflares tjeneste «1.1.1.1 for Families».</li>
-  <li>Behandlingsansvarlig sender deg den private lenken fra sin egen e-postkonto, så e-postleverandøren deres har også adressen din og en kopi av meldingen. Appen sender ingen e-post selv.</li>
+  <li>Behandlingsansvarlig eller gruppens arrangør sender deg den private lenken fra sin egen e-postkonto, så e-postleverandøren deres har også adressen din og en kopi av meldingen. Meldte du deg på med påmeldingslenken, fikk du lenken med en gang, og ingen trenger å sende den. Appen sender ingen e-post selv.</li>
   <li>Produktlenker du legger inn, hentes av appens server, ikke nettleseren din, og produktbilder sendes videre av serveren, så butikkene ser aldri besøket ditt.</li>
   <li>Valutakurser hentes fra Den europeiske sentralbanken (via frankfurter.dev); ingen personopplysninger sendes.</li>
 </ul>

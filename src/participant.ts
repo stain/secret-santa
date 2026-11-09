@@ -266,6 +266,13 @@ export async function handleParticipant(
     me.name,
     html`<h1>${t.hello(me.name)}</h1>
 <p class="lead">${t.lead(chain.name)}</p>
+${url.searchParams.has("joined") && html`<section class="card joined">
+  <h2>${t.joinedHeading}</h2>
+  <p>${t.joinedText}</p>
+  <p><a href="${`mailto:${encodeURIComponent(me.email)}?subject=${encodeURIComponent(t.mailSubject(chain.name))}&body=${
+    encodeURIComponent(t.mailBody(me.name, chain.name, url.origin + participantPath(me), `${url.origin}/privacy`))}`}">✉️ ${t.joinedEmailMyself}</a></p>
+  <input readonly value="${url.origin + participantPath(me)}" aria-label="${t.joinedHeading}">
+</section>`}
 ${assignment}
 <section class="card">
   <h2>${t.yourWishes}</h2>

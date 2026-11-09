@@ -152,6 +152,51 @@ const en = {
     `Open it to see whom you give a present to and to add your own wishes:\n\n${link}\n\n` +
     `Don't share this link: anyone with it can see your page.\n\n` +
     `How your data is handled: ${privacy}\n\nHo ho ho!`,
+  organiserPageNote: "Organiser's page for this group. Keep this page's link to yourself: anyone with it can manage the group.",
+  invitesHeading: "Invitation links",
+  organiserLinkHeading: "Organiser's link",
+  organiserLinkHelp:
+    "Send this to the group's organiser: it lets them add and remove people, send them their links, open the join link and draw names, without the admin password. They can't see the circle or delete the group.",
+  joinLinkHeading: "Join link",
+  joinLinkHelp:
+    "Share this in a group chat (Teams, say): people add their own name and email and get their private link straight away. It only works until the cut-off date, and stops once names are drawn.",
+  joiningOpenUntil: (date: string) => `People can join with the link until the end of ${date} (UTC).`,
+  joiningClosedDrawn: "The join link is closed: names have been drawn.",
+  joiningClosedPast: "The join link is closed: the cut-off date has passed. Choose a later date to open it again.",
+  joiningOff: "The join link is off. Choose a cut-off date to open it.",
+  cutoffLabel: "Last day to join (cut-off)",
+  cutoffHelp:
+    "At the latest Christmas Eve (24 December). Names can only be drawn once the cut-off day is over, so choose a day that leaves time to buy presents. Leave the date empty to turn the join link off.",
+  badCutoff: "Choose a valid cut-off date, no later than Christmas Eve (24 December) or the group's end date.",
+  renewLinksHelp: "If the organiser's link or the join link got to the wrong people, make new ones: the old links stop working. Participants' private links don't change.",
+  renewLinksConfirm: "Yes, replace both links",
+  renewLinks: "Make new invitation links",
+  selfJoined: "Joined with the join link",
+  selfJoinedHelp: "Joined with the join link and already has their private link.",
+  drawAfterCutoff: (date: string) =>
+    `People can still join until the end of ${date}, so names can be drawn after that. To draw sooner, clear the cut-off date above, which closes the join link.`,
+  joinTitle: (chain: string) => `Join ${chain}`,
+  joinLead: "Add your name and email address to take part. You'll get your own private page straight away, where you can write your wish list.",
+  joinUntil: (date: string) => `You can join until the end of ${date}. Names are drawn after that.`,
+  joinName: "Your name (as others in the group know you)",
+  joinEmail: "Your email address",
+  joinButton: "Join the Secret Santa",
+  joinPrivacy:
+    "Everyone in the group sees your name and wishes. Your email address is seen only by the organiser and the data controller, to send you your link if you lose it.",
+  joinNeedNameEmail: "Please give your name and a valid email address.",
+  joinEmailListed:
+    "Someone with this email address is already on the list. If that's you, you're already in: use the private link you were given, or ask the organiser to send it to you again.",
+  joinNameListed: (name: string) =>
+    `There's already someone called ${name} on the list. If that's you, you're already in: ask the organiser for your link rather than joining twice. If you're someone else, add a surname or initial so people can tell you apart, or tick the box to join anyway.`,
+  joinSameNameConfirm: "I'm a different person with the same name",
+  joinFull: "This group can't take any more people through the join link. Ask the organiser to add you.",
+  joinNotOpen: "Joining isn't open. Ask the organiser if you want to take part.",
+  joinClosed: "Joining is closed: the cut-off date has passed. Ask the organiser if you still want to take part.",
+  joinClosedDrawn: "Joining is closed: the names have already been drawn. Ask the organiser if you still want to take part.",
+  joinedHeading: "🎉 You're in!",
+  joinedText:
+    "This is your private page. Save its link now (bookmark it, or email it to yourself): it is the only way back here, and you'll need it to see whom you give to after the draw.",
+  joinedEmailMyself: "Email this link to myself",
 };
 
 export type Dict = typeof en;
@@ -300,6 +345,51 @@ const es: Dict = {
     `Ábrela para ver a quién le haces un regalo y para añadir tus propios deseos:\n\n${link}\n\n` +
     `No compartas este enlace: cualquiera que lo tenga puede ver tu página.\n\n` +
     `Cómo se tratan tus datos: ${privacy}\n\n¡Jo, jo, jo!`,
+  organiserPageNote: "Página de quien organiza este grupo. No compartas el enlace de esta página: cualquiera que lo tenga puede gestionar el grupo.",
+  invitesHeading: "Enlaces de invitación",
+  organiserLinkHeading: "Enlace para quien organiza",
+  organiserLinkHelp:
+    "Envíaselo a quien organiza el grupo: le permite añadir y quitar personas, enviarles sus enlaces, abrir el enlace para unirse y hacer el sorteo, sin la contraseña de administración. No puede ver el círculo ni borrar el grupo.",
+  joinLinkHeading: "Enlace para unirse",
+  joinLinkHelp:
+    "Compártelo en un chat del grupo (por ejemplo, en Teams): cada persona añade su nombre y su correo y recibe su enlace privado al momento. Solo funciona hasta la fecha límite y deja de funcionar al hacer el sorteo.",
+  joiningOpenUntil: (date) => `Se puede unir con el enlace hasta el final del ${date} (UTC).`,
+  joiningClosedDrawn: "El enlace para unirse está cerrado: ya se ha hecho el sorteo.",
+  joiningClosedPast: "El enlace para unirse está cerrado: la fecha límite ya ha pasado. Elige una fecha posterior para volver a abrirlo.",
+  joiningOff: "El enlace para unirse está desactivado. Elige una fecha límite para abrirlo.",
+  cutoffLabel: "Último día para unirse (fecha límite)",
+  cutoffHelp:
+    "Como muy tarde, el 24 de diciembre (Nochebuena). El sorteo solo se puede hacer cuando termine el día límite, así que elige un día que deje tiempo para comprar los regalos. Deja la fecha vacía para desactivar el enlace para unirse.",
+  badCutoff: "Elige una fecha límite válida, que no sea posterior al 24 de diciembre (Nochebuena) ni a la fecha de fin del grupo.",
+  renewLinksHelp: "Si el enlace para quien organiza o el enlace para unirse ha llegado a quien no debía, crea otros nuevos: los antiguos dejan de funcionar. Los enlaces privados de los participantes no cambian.",
+  renewLinksConfirm: "Sí, sustituir los dos enlaces",
+  renewLinks: "Crear nuevos enlaces de invitación",
+  selfJoined: "Se unió con el enlace para unirse",
+  selfJoinedHelp: "Se unió con el enlace para unirse y ya tiene su enlace privado.",
+  drawAfterCutoff: (date) =>
+    `Todavía es posible unirse hasta el final del ${date}, así que el sorteo se podrá hacer después. Para sortear antes, borra la fecha límite de arriba, lo que cierra el enlace para unirse.`,
+  joinTitle: (chain) => `Únete a ${chain}`,
+  joinLead: "Añade tu nombre y tu correo para participar. Recibirás tu propia página privada al momento, donde puedes escribir tu lista de deseos.",
+  joinUntil: (date) => `Puedes unirte hasta el final del ${date}. El sorteo se hace después.`,
+  joinName: "Tu nombre (como te conocen en el grupo)",
+  joinEmail: "Tu dirección de correo",
+  joinButton: "Unirme al Santa Secreto",
+  joinPrivacy:
+    "Todo el grupo ve tu nombre y tus deseos. Tu correo solo lo ven quien organiza y el responsable del tratamiento, para enviarte tu enlace si lo pierdes.",
+  joinNeedNameEmail: "Indica tu nombre y una dirección de correo válida.",
+  joinEmailListed:
+    "Ya hay alguien en la lista con esta dirección de correo. Si eres tú, ya estás dentro: usa el enlace privado que recibiste, o pide a quien organiza que te lo vuelva a enviar.",
+  joinNameListed: (name) =>
+    `Ya hay alguien en la lista que se llama ${name}. Si eres tú, ya estás dentro: pide tu enlace a quien organiza en lugar de unirte dos veces. Si eres otra persona, añade un apellido o una inicial para que se os distinga, o marca la casilla para unirte igualmente.`,
+  joinSameNameConfirm: "Soy otra persona con el mismo nombre",
+  joinFull: "Este grupo no admite más personas con el enlace para unirse. Pide a quien organiza que te añada.",
+  joinNotOpen: "No está abierto para unirse. Pregunta a quien organiza si quieres participar.",
+  joinClosed: "Ya no es posible unirse: la fecha límite ha pasado. Pregunta a quien organiza si todavía quieres participar.",
+  joinClosedDrawn: "Ya no es posible unirse: ya se ha hecho el sorteo. Pregunta a quien organiza si todavía quieres participar.",
+  joinedHeading: "🎉 ¡Ya estás dentro!",
+  joinedText:
+    "Esta es tu página privada. Guarda su enlace ahora (en marcadores, o envíatelo por correo): es la única forma de volver aquí, y lo necesitarás para ver a quién le haces el regalo después del sorteo.",
+  joinedEmailMyself: "Enviarme este enlace por correo",
 };
 
 const nb: Dict = {
@@ -446,6 +536,51 @@ const nb: Dict = {
     `Åpne den for å se hvem du skal gi en gave til, og for å legge inn dine egne ønsker:\n\n${link}\n\n` +
     `Ikke del lenken: alle som har den, kan se siden din.\n\n` +
     `Slik behandles dataene dine: ${privacy}\n\nHo ho ho!`,
+  organiserPageNote: "Arrangørens side for denne gruppen. Ikke del lenken til denne siden: alle som har den, kan administrere gruppen.",
+  invitesHeading: "Invitasjonslenker",
+  organiserLinkHeading: "Lenke for arrangøren",
+  organiserLinkHelp:
+    "Send denne til gruppens arrangør: med den kan de legge til og fjerne folk, sende dem lenkene deres, åpne påmeldingslenken og trekke navn, uten administratorpassordet. De kan ikke se sirkelen eller slette gruppen.",
+  joinLinkHeading: "Påmeldingslenke",
+  joinLinkHelp:
+    "Del denne i en gruppechat (for eksempel i Teams): folk skriver inn navn og e-post selv og får sin private lenke med en gang. Den virker bare fram til fristen, og slutter å virke når navnene er trukket.",
+  joiningOpenUntil: (date) => `Folk kan melde seg på med lenken til og med ${date} (UTC).`,
+  joiningClosedDrawn: "Påmeldingslenken er stengt: navnene er trukket.",
+  joiningClosedPast: "Påmeldingslenken er stengt: fristen har gått ut. Velg en senere dato for å åpne den igjen.",
+  joiningOff: "Påmeldingslenken er slått av. Velg en frist for å åpne den.",
+  cutoffLabel: "Siste dag for påmelding (frist)",
+  cutoffHelp:
+    "Senest julaften (24. desember). Navnene kan først trekkes når fristdagen er over, så velg en dag som gir tid til å kjøpe gaver. La datoen stå tom for å slå av påmeldingslenken.",
+  badCutoff: "Velg en gyldig frist, ikke senere enn julaften (24. desember) eller gruppens sluttdato.",
+  renewLinksHelp: "Hvis lenken for arrangøren eller påmeldingslenken har kommet til feil personer, lag nye: de gamle slutter å virke. Deltakernes private lenker endres ikke.",
+  renewLinksConfirm: "Ja, erstatt begge lenkene",
+  renewLinks: "Lag nye invitasjonslenker",
+  selfJoined: "Meldte seg på med påmeldingslenken",
+  selfJoinedHelp: "Meldte seg på med påmeldingslenken og har allerede sin private lenke.",
+  drawAfterCutoff: (date) =>
+    `Folk kan fortsatt melde seg på til og med ${date}, så navnene kan trekkes etter det. For å trekke tidligere, fjern fristen over, som stenger påmeldingslenken.`,
+  joinTitle: (chain) => `Bli med i ${chain}`,
+  joinLead: "Skriv inn navn og e-postadresse for å være med. Du får din egen private side med en gang, der du kan skrive ønskelisten din.",
+  joinUntil: (date) => `Du kan melde deg på til og med ${date}. Navnene trekkes etter det.`,
+  joinName: "Navnet ditt (slik de andre i gruppen kjenner deg)",
+  joinEmail: "E-postadressen din",
+  joinButton: "Bli med på hemmelig nisse",
+  joinPrivacy:
+    "Alle i gruppen ser navnet ditt og ønskene dine. E-postadressen din ser bare arrangøren og behandlingsansvarlig, for å kunne sende deg lenken hvis du mister den.",
+  joinNeedNameEmail: "Skriv inn navnet ditt og en gyldig e-postadresse.",
+  joinEmailListed:
+    "Noen med denne e-postadressen står allerede på listen. Er det deg, er du allerede med: bruk den private lenken du fikk, eller be arrangøren sende den til deg igjen.",
+  joinNameListed: (name) =>
+    `Det står allerede noen som heter ${name} på listen. Er det deg, er du allerede med: be arrangøren om lenken din i stedet for å melde deg på to ganger. Er du en annen, legg til etternavn eller forbokstav så folk kan skille dere, eller kryss av i boksen for å melde deg på likevel.`,
+  joinSameNameConfirm: "Jeg er en annen person med samme navn",
+  joinFull: "Denne gruppen kan ikke ta inn flere via påmeldingslenken. Be arrangøren legge deg til.",
+  joinNotOpen: "Påmeldingen er ikke åpen. Spør arrangøren hvis du vil være med.",
+  joinClosed: "Påmeldingen er stengt: fristen har gått ut. Spør arrangøren hvis du fortsatt vil være med.",
+  joinClosedDrawn: "Påmeldingen er stengt: navnene er allerede trukket. Spør arrangøren hvis du fortsatt vil være med.",
+  joinedHeading: "🎉 Du er med!",
+  joinedText:
+    "Dette er din private side. Lagre lenken nå (som bokmerke, eller send den til deg selv på e-post): det er den eneste veien tilbake hit, og du trenger den for å se hvem du skal gi til etter trekningen.",
+  joinedEmailMyself: "Send denne lenken til meg selv",
 };
 
 export const DICTS = { en, es, nb } as const;

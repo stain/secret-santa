@@ -7,6 +7,7 @@
 limit_req_zone $binary_remote_addr zone=santa_general:10m rate=10r/s;
 limit_req_zone $binary_remote_addr zone=santa_admin:10m rate=30r/m;
 limit_req_zone $binary_remote_addr zone=santa_lookup:10m rate=20r/m;
+limit_req_zone $binary_remote_addr zone=santa_join:10m rate=20r/m;
 limit_conn_zone $binary_remote_addr zone=santa_conn:10m;
 limit_conn_zone $server_name zone=santa_total:1m;
 limit_req_status 429;
@@ -193,6 +194,17 @@ server {
     }
     location /admin {
         limit_req zone=santa_admin burst=20 nodelay;
+        limit_conn santa_total 100;
+        proxy_pass http://127.0.0.1:8787;
+    }
+    # The organiser's page works like /admin; the join link is shared widely.
+    location /o/ {
+        limit_req zone=santa_admin burst=20 nodelay;
+        limit_conn santa_total 100;
+        proxy_pass http://127.0.0.1:8787;
+    }
+    location /j/ {
+        limit_req zone=santa_join burst=10 nodelay;
         limit_conn santa_total 100;
         proxy_pass http://127.0.0.1:8787;
     }

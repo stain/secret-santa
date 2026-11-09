@@ -12,6 +12,9 @@ export interface Chain {
   currency: string;
   organiser: string; // name and contact of whoever is responsible for the data
   ends_on: string | null; // YYYY-MM-DD; all data is deleted within two days after (UTC)
+  organiser_key: string; // secret for the organiser's link, /o/<id>?key=
+  join_key: string; // secret for the join link, /j/<id>?key=
+  joins_close_on: string | null; // YYYY-MM-DD, last day people can join themselves; NULL: off
 }
 
 export interface Participant {
@@ -22,6 +25,7 @@ export interface Participant {
   access_key: string;
   giftee_id: string | null;
   created_at: string;
+  self_joined: number; // 1 if they joined with the join link
 }
 
 export interface Wish {
@@ -41,6 +45,8 @@ export interface Settings {
 }
 
 export const MIN_PARTICIPANTS = 3;
+/** The join link stops adding people beyond this, so a leaked link can't fill the database. */
+export const MAX_SELF_JOINED = 200;
 export const MAX_WISHES = 3;
 
 export async function getSettings(db: Database): Promise<Settings> {
@@ -81,8 +87,8 @@ export function defaultEndDate(now = new Date()): string {
 export async function createChain(db: Database, name: string, currency: string): Promise<string> {
   const id = crypto.randomUUID();
   await db
-    .prepare("INSERT INTO chains (id, name, currency, ends_on) VALUES (?, ?, ?, ?)")
-    .bind(id, name, currency, defaultEndDate())
+    .prepare("INSERT INTO chains (id, name, currency, ends_on, organiser_key, join_key) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(id, name, currency, defaultEndDate(), newAccessKey(), newAccessKey())
     .run();
   return id;
 }
@@ -110,6 +116,36 @@ export async function purgeExpired(db: Database, now = new Date()): Promise<numb
     db.prepare("DELETE FROM lookups WHERE at < ?").bind(dayAgo),
   ]);
   return results[2].meta.changes ?? 0;
+}
+
+/** Opens joining with the join link until the end of `closesOn`, or turns it off (null). */
+export async function setJoinsCloseOn(db: Database, id: string, closesOn: string | null): Promise<void> {
+  await db.prepare("UPDATE chains SET joins_close_on = ? WHERE id = ?").bind(closesOn, id).run();
+}
+
+/** New organiser and join links; the old ones stop working. */
+export async function renewInviteKeys(db: Database, id: string): Promise<void> {
+  await db
+    .prepare("UPDATE chains SET organiser_key = ?, join_key = ? WHERE id = ?")
+    .bind(newAccessKey(), newAccessKey(), id)
+    .run();
+}
+
+/**
+ * The latest cut-off for joining: Christmas Eve, so names are drawn and
+ * presents bought before Christmas. After 24 December, next year's.
+ */
+export function latestCutoff(now = new Date()): string {
+  const year = now.getUTCFullYear();
+  return now.toISOString().slice(5, 10) <= "12-24" ? `${year}-12-24` : `${year + 1}-12-24`;
+}
+
+/**
+ * Whether the join link works now: a cut-off date is set and not yet over
+ * (in UTC, so the last day counts in full in Europe), and names aren't drawn.
+ */
+export function joiningOpen(chain: Chain, now = new Date()): boolean {
+  return chain.joins_close_on !== null && chain.drawn_at === null && now.toISOString().slice(0, 10) <= chain.joins_close_on;
 }
 
 export async function setBudget(db: Database, id: string, limit: number | null, currency: string): Promise<void> {
@@ -159,6 +195,36 @@ export async function addParticipants(
   );
   const results = await db.batch([...clearDraw(db, chainId), ...inserts]);
   return results.slice(2).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+}
+
+/**
+ * Adds one person who joined with the join link, unless the names have been
+ * drawn meanwhile, their email is already in the group, or the group has had
+ * MAX_SELF_JOINED people join this way. The draw is never changed.
+ */
+export async function joinChain(
+  db: Database,
+  chainId: string,
+  name: string,
+  email: string,
+): Promise<Participant | "taken" | "closed" | "full"> {
+  const joined = await db
+    .prepare("SELECT COUNT(*) AS n FROM participants WHERE chain_id = ? AND self_joined = 1")
+    .bind(chainId)
+    .first<{ n: number }>();
+  if ((joined?.n ?? 0) >= MAX_SELF_JOINED) return "full";
+  const id = crypto.randomUUID();
+  const result = await db
+    .prepare(
+      `INSERT INTO participants (id, chain_id, name, email, access_key, self_joined)
+       SELECT ?, id, ?, ?, ?, 1 FROM chains WHERE id = ? AND drawn_at IS NULL
+       ON CONFLICT (chain_id, email) DO NOTHING`,
+    )
+    .bind(id, name, email, newAccessKey(), chainId)
+    .run();
+  if (result.meta.changes) return (await getParticipant(db, id))!;
+  const drawn = await db.prepare("SELECT 1 FROM chains WHERE id = ? AND drawn_at IS NOT NULL").bind(chainId).first();
+  return drawn ? "closed" : "taken";
 }
 
 /** Corrects a participant's name or email (GDPR rectification); the draw is kept. */

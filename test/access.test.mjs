@@ -31,6 +31,8 @@ async function fetchPatiently(url, init) {
 
 let group; // /admin/chains/<id>
 let people; // [{ id, key }]
+let organiser; // { id, key }
+let join; // { id, key }
 
 async function adminPost(path, body) {
   return fetchPatiently(BASE + path, { method: "POST", headers: form(admin), body, redirect: "manual" });
@@ -46,6 +48,13 @@ before(async () => {
     .map((m) => ({ id: m[1], key: m[2] }))
     .filter((p, i, all) => all.findIndex((q) => q.id === p.id) === i);
   assert.equal(people.length, 3, "expected three private links on the admin page");
+  const link = (kind) => {
+    const m = html.match(new RegExp(`/${kind}/([0-9a-f-]{36})\\?key=([A-Za-z0-9_-]+)`));
+    return m && { id: m[1], key: m[2] };
+  };
+  organiser = link("o");
+  join = link("j");
+  assert.ok(organiser && join, "expected the organiser and join links on the admin page");
 });
 
 after(async () => {
@@ -92,8 +101,79 @@ test("saving wishes (which triggers lookups) needs the key", async () => {
 
 test("admin pages need the password", async () => {
   for (const path of ["/admin", group, "/admin/settings"]) assert.equal(await status(path), 401, path);
-  for (const action of ["draw", "delete", "participants", "budget", "privacy"]) {
+  for (const action of ["draw", "delete", "participants", "budget", "privacy", "joining", "renew-links"]) {
     assert.equal(await status(`${group}/${action}`, { method: "POST", headers: form({ Origin: BASE }), body: "x=1" }), 401, action);
+  }
+});
+
+test("the organiser's page needs its key, and can't do admin-only actions", async () => {
+  const { id, key } = organiser;
+  const post = (path) => status(path, { method: "POST", headers: form({ Origin: BASE }), body: "x=1" });
+  assert.equal(await status(`/o/${id}?key=${key}`), 200);
+  for (const path of [
+    `/o/${id}`,
+    `/o/${id}?key=`,
+    `/o/${id}?key=${join.key}`, // the join link's key
+    `/o/${id}?key=${people[0].key}`, // a participant's key
+    `/o/${id}?key=${key.slice(0, 16)}`,
+    `/o/00000000-0000-4000-8000-000000000000?key=${key}`,
+    `/o/not-a-uuid?key=${key}`,
+  ]) {
+    assert.equal(await status(path), 404, path);
+  }
+  for (const action of ["draw", "participants", "remove", "joining"]) {
+    assert.equal(await post(`/o/${id}/${action}`), 404, action);
+  }
+  for (const action of ["delete", "privacy", "renew-links"]) {
+    assert.equal(await post(`/o/${id}/${action}?key=${key}`), 404, action);
+  }
+  assert.equal(
+    await status(`/o/${id}/joining?key=${key}`, { method: "POST", headers: form({ Origin: "https://evil.example" }), body: "x=1" }),
+    403,
+  );
+});
+
+test("the join link needs its key, is closed after the draw and never hands out an existing link", async () => {
+  const { id, key } = join;
+  for (const path of [`/j/${id}`, `/j/${id}?key=${organiser.key}`, `/j/${id}?key=${key}x`, `/j/not-a-uuid?key=${key}`]) {
+    assert.equal(await status(path), 404, path);
+  }
+  const tryJoin = (email) =>
+    fetchPatiently(`${BASE}/j/${id}?key=${key}`, {
+      method: "POST",
+      headers: form({ Origin: BASE }),
+      body: `name=Z&email=${encodeURIComponent(email)}`,
+      redirect: "manual",
+    });
+  // Today is always an allowed cut-off (at the latest 24 December and the group's end date), and joining stays open all day.
+  const today = new Date().toISOString().slice(0, 10);
+  // The group has been drawn: joining is closed, even with a cut-off date set.
+  assert.equal((await adminPost(`${group}/joining`, `joins_close_on=${today}`)).status, 303);
+  assert.equal((await tryJoin("z@test.invalid")).status, 200);
+  assert.doesNotMatch(await (await fetchPatiently(BASE + group, { headers: admin })).text(), /z@test\.invalid/);
+  // Before a draw, someone already listed gets a warning, not a link.
+  const created = await adminPost("/admin", "name=Join+test+(temporary)");
+  const other = new URL(created.headers.get("Location"), BASE).pathname;
+  try {
+    await adminPost(`${other}/participants`, "people=" + encodeURIComponent("A, a@test.invalid"));
+    assert.equal((await adminPost(`${other}/joining`, `joins_close_on=${today}`)).status, 303);
+    // No cut-off after Christmas Eve, and no draw until joining has closed.
+    const christmas = Number(today.slice(0, 4)) + (today.slice(5) > "12-24" ? 1 : 0);
+    assert.equal((await adminPost(`${other}/joining`, `joins_close_on=${christmas}-12-25`)).status, 400);
+    await adminPost(`${other}/participants`, "people=" + encodeURIComponent("B, b@test.invalid\nC, c@test.invalid"));
+    assert.equal((await adminPost(`${other}/draw`, "x=1")).status, 400);
+    const page = await (await fetchPatiently(BASE + other, { headers: admin })).text();
+    const [, otherId, otherKey] = page.match(/\/j\/([0-9a-f-]{36})\?key=([A-Za-z0-9_-]+)/);
+    const res = await fetchPatiently(`${BASE}/j/${otherId}?key=${otherKey}`, {
+      method: "POST",
+      headers: form({ Origin: BASE }),
+      body: "name=Anyone&email=A%40test.invalid",
+      redirect: "manual",
+    });
+    assert.equal(res.status, 409);
+    assert.doesNotMatch(await res.text(), /\/p\/[0-9a-f-]{36}\?key=/);
+  } finally {
+    await adminPost(`${other}/delete`, "x=1");
   }
 });
 

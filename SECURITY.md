@@ -6,7 +6,7 @@ This document describes what the Secret Santa app protects, how, what the people
 
 1. **The draw.** A participant must not be able to find out who gives to them, nor whom anyone else gives to.
 2. **Private pages.** Only the holder of a participant's link can see or change that participant's page, wishes and data.
-3. **Administration.** Only the admin can create groups, see email addresses and the draw, or change anything.
+3. **Administration.** Only the admin can create groups, see the draw, or change anything; a group's organiser, given an organiser's link, can manage that one group's people, budget, join link and draw.
 4. **Personal data.** Names, email addresses and wishes are seen only by those who need them, kept no longer than needed, and not passed to anyone else (see the GDPR section in `DEPLOYMENT.md`).
 5. **The server.** Links that participants enter must not let anyone reach the server's internal services, use it as a proxy, or run up costs.
 
@@ -29,6 +29,12 @@ This document describes what the Secret Santa app protects, how, what the people
 
 - HTTP Basic authentication against `ADMIN_PASSWORD` (any user name), compared in constant time.
 - Every change is a POST, and posts from other sites are refused by checking the `Origin` header (cross-site request forgery). The participant wish form has the same check.
+
+### Invitation links (`src/admin.ts`, `src/join.ts`)
+
+- **Organiser's link** `/o/<uuid>?key=<key>` and **join link** `/j/<uuid>?key=<key>`: each with its own 192-bit random key per group, compared in constant time, with the same "not found" for a wrong key and an unknown group. Neither key works for the other link or for `/p/`. The admin can replace both keys at once, which stops the old links working; participants' links don't change.
+- **The organiser's page** is the admin's group page without the data controller's settings, the circle, the organiser's link, renewing links or deleting the group. Posts need the same `Origin` check as admin pages.
+- **The join link** only adds people while a cut-off date is set and not over, and only before the draw, which in turn is refused until the cut-off day is over (checked again in the same SQL statement that adds the person, so a join can't slip in after a draw). Someone whose email address is already in the group gets a warning and no link: the join link is shared widely, so it must never hand out an existing participant's page. A name already on the list gets a warning, and joining needs a tick to confirm a different person. At most 200 people can join a group this way, and nginx allows 20 join requests a minute per address.
 
 ### Web page safety (`src/html.ts`, `src/layout.ts`)
 
@@ -73,7 +79,7 @@ This document describes what the Secret Santa app protects, how, what the people
   - **Static files:** the front page, privacy notice and assets are served from disk with the same security headers as the app's pages, so they don't touch the app and keep working if it's down.
 - **Floods and bots** (a small server can't withstand a large network flood; only an upstream service could, and that would see private links):
   - **Firewall:** at most about 30 new web connections a second per address, dropped in the kernel.
-  - **nginx, per address:** 10 requests a second with bursts, 30 a minute for `/admin`, 20 a minute for product lookups, and 20 connections at once.
+  - **nginx, per address:** 10 requests a second with bursts, 30 a minute for `/admin` and organisers' pages, 20 a minute for join links and product lookups, and 20 connections at once.
   - **nginx, in total:** at most 100 requests in progress at the app at once, from all visitors together.
   - **Request size and timeouts:** short timeouts against slow clients, a 100 KB body limit, and only `GET`, `HEAD` and `POST`.
   - **Repeat offenders:** blocked for an hour by fail2ban after 50 refused requests in a minute.
@@ -104,6 +110,8 @@ This document describes what the Secret Santa app protects, how, what the people
 ## Known limits and accepted risks
 
 - **In small groups the Santa can be worked out.** In a single circle your Santa is never you or your giftee, so with 3 people everyone could deduce who theirs is, and with 4 it's a coin toss. That's accepted by design: Secret Santa is about being kind to someone who doesn't quite expect it, not about keeping the giver hidden against someone trying to find out. The app keeps the draw out of sight (no participant can see anyone else's giftee), and the minimum group size stays at 3.
+- **Anyone with a group's join link can join it** until the cut-off date, under any name, and can find out whether an email address is already in the group. Share it only where the group is (such as a team chat), keep the cut-off short, and replace the links if it leaks. Unwanted people can be removed before the draw.
+- **The organiser's link shows everyone's private link** in that group (so the organiser can send them), and so lets the organiser open any participant's page, including whom they give to. Give it only to someone trusted with that.
 - **Anyone with a participant's link has their page.** Links can end up in browser history, email archives, and email security scanners that open links (the app answers their `HEAD` requests but changes nothing on `GET`).
 - **One shared admin password**, with no lockout after failed attempts and no separate accounts. Anyone with it sees all groups, including email addresses and the draw.
 - **The family-friendly check judges whole sites** and lets links through if the DNS service can't be reached. Unsuitable products on general shops (such as Amazon) are left to the admin's review. Wish text isn't filtered.

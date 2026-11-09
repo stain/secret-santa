@@ -3,13 +3,14 @@
 // and `handle` renders everything else.
 
 import type { Env } from "./env";
-import { handleAdmin } from "./admin";
+import { handleAdmin, handleOrganiser } from "./admin";
 import { getSettings } from "./db";
 import { html } from "./html";
 import { resolveContext, switchLanguage, type Ctx } from "./i18n";
 import { errorPage, page } from "./layout";
 import { switchCurrency } from "./money";
 import { handleImage } from "./images";
+import { handleJoin } from "./join";
 import { handleParticipant } from "./participant";
 import { privacyPage } from "./privacy";
 
@@ -76,6 +77,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (path[0] === "p" && (path.length === 2 || (path.length === 3 && ["preview", "data"].includes(path[2])))) {
     return handleParticipant(ctx, request, env, path[1], path[2]);
   }
+  if (path[0] === "o" && path.length >= 2 && path.length <= 4) return handleOrganiser(ctx, request, env, path.slice(1));
+  if (path[0] === "j" && path.length === 2) return handleJoin(ctx, request, env, path[1]);
   if (path[0] === "admin") return handleAdmin(ctx, request, env, path.slice(1));
   return errorPage(ctx, 404, t.notFound);
 }
